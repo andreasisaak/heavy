@@ -11,7 +11,7 @@ import (
 // PersonalForm is the shape ~/.config/heavy/config.json must have, as error messages name it.
 const PersonalForm = `{"projects": {"<main checkout>": {"enabled": true, "commands": ["make ci"]}}, "load": {"max_parallel": 3}} ` +
 	`with every key optional, each command a string or an object as in .heavy.json, and "load" with "max_parallel" (from 1), ` +
-	`"reserve_bytes", "vm_pressure_bytes", "vm_recovered_bytes", "swap_bytes_per_2s" (whole bytes from 0), ` +
+	`"reserve_bytes", "vm_pressure_bytes", "vm_recovered_bytes", "swap_bytes_per_2s", "unpredicted_peak_bytes" (whole bytes from 0), ` +
 	`"host_pressure_percent", "host_recovered_percent" (0 to 100) and "load_per_core" (from 0)`
 
 // Switch is the personal entry of one main checkout: whether its .heavy.json counts, and commands added to it.

@@ -31,7 +31,7 @@ func (m Model) runRows() []string {
 			{text: position(current)},
 			{text: current.Label},
 			{text: place(current.Directory)},
-			{text: memory(current)},
+			{text: memory(current, m.options.Estimate())},
 			{text: detail(current)},
 		}
 	}
@@ -54,12 +54,18 @@ func position(run protocol.RunStatus) string {
 	return fmt.Sprintf("#%d", run.Position)
 }
 
-// memory is the resident memory of a running or paused run, the expected peak of a waiting one (~? without history).
-func memory(run protocol.RunStatus) string {
+// memory is the resident memory of a running or paused run, the expected peak of a waiting one. A run without
+// history shows the estimate heavy plans it with, also while it runs, and ~? while it waits without one.
+func memory(run protocol.RunStatus, estimate int64) string {
+	unknown := run.PredictedBytes == 0
 	switch {
+	case run.State != "waiting" && unknown && estimate > 0:
+		return size(run.RSSBytes) + " · est. " + size(estimate)
 	case run.State != "waiting":
 		return size(run.RSSBytes)
-	case run.PredictedBytes == 0:
+	case unknown && estimate > 0:
+		return "~" + size(estimate) + " estimated"
+	case unknown:
 		return "~? expected"
 	}
 	return "~" + size(run.PredictedBytes) + " expected"

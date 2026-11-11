@@ -86,7 +86,7 @@ In Claude Code:
    failed 2   c580acbda119  make ci    ~/sites/shop          -        ended 18:07
    ```
 
-   A waiting run shows its expected peak memory with `~`. A last line `VM: not measured (…)` says that the daemon cannot reach the Docker VM, for example while OrbStack sleeps.
+   A waiting run shows its expected peak memory with `~`, and `~?` when its command has no record yet. A last line `VM: not measured (…)` says that the daemon cannot reach the Docker VM, for example while OrbStack sleeps.
 
 4. Watch the machine live with `heavy --dashboard`: cores, free memory of the VM and the Mac, load, each run with its memory and cores, the free memory of the last 30 minutes, the biggest containers outside the runs and the last results.
 
@@ -152,6 +152,7 @@ List what the catalogue cannot see: make targets, CI scripts, and compose servic
 | `host_pressure_percent`, `host_recovered_percent` | `10`, `20` | free memory of the host in percent, the same for the host |
 | `load_per_core` | `0.8` | a new run starts beside others only below this load per core |
 | `swap_bytes_per_2s` | 4 MiB | a new run starts beside others only below this swap-out rate |
+| `unpredicted_peak_bytes` | none | the peak memory to expect of a command without any record; with it such a run may start beside others, without it only alone |
 
 On Linux "the VM" in these keys is the machine: its available memory (`MemAvailable`), and at most what the cgroup limits of your user leave (`memory.high` and `memory.max` less the memory in use, which is `memory.current` without the file cache, as systemd sets them with `MemoryHigh` and `MemoryMax` on a user slice).
 
@@ -179,6 +180,8 @@ A waiting run starts when fewer than `max_parallel` runs are active, none of the
 Under a [machine configuration](#machine-configuration) the runs of other users count: a run starts unchecked only while no run is active on the whole machine. Beside runs of other users alone it needs the reserve, the load and the swap conditions, but no record of an earlier run, and an `exclusive` run waits until no slot is taken.
 
 The expected peak is the highest of the last five runs of the same command in the same repository. For a new command heavy uses the runs with the same short name, such as `ci` or `vitest`; a command without any record starts only alone. A run that does not fit lets the runs behind it pass that do, until it has waited 15 minutes.
+
+On a machine with much memory that rule keeps a new project waiting run by run, since no command has a record yet. `unpredicted_peak_bytes` in the personal list changes it: heavy then expects that peak of a command without a record and starts it beside others while the free memory holds the estimate and the reserve; load, swap and the free memory of the host count as for any run. Each active run without a record keeps the part of the estimate free that its measured peak has not reached, so of several such runs only as many start as fit. Choose the peak of your biggest command, for example `8589934592` (8 GiB) on a machine with 128 GiB; on a Mac with a small Docker VM leave the key out. `heavy --status` and the dashboard mark such a run: `~8.0 GiB est.` while it waits, `0.5 GiB (est. 8.0 GiB)` while it runs. Its first run gives it a record, and the estimate no longer applies to it.
 
 `HEAVY_CPUS` tells a run how many cores it may use: all of them alone, otherwise what the load leaves. The project decides whether it reads the value, for example for the number of test workers.
 
@@ -284,6 +287,8 @@ The machine configuration names a folder that does not exist. The run started wi
 ### A run waits although the machine looks idle
 
 `heavy --dashboard` shows why: a run beside others needs load below `load_per_core` and enough free VM memory for its expected peak. One `make ci` can keep the load above that threshold on its own.
+
+A run that shows `~?` in `heavy --status` has no record of an earlier run and starts only when no other run of yours is active. On a new machine that holds for almost every command, so the queue runs one by one although load and memory are low. Set `unpredicted_peak_bytes` in the `load` section of `~/.config/heavy/config.json`, see [Admission](#admission); the daemon reads the file again within two seconds.
 
 ## Contributing
 

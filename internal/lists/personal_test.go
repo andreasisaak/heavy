@@ -86,6 +86,31 @@ func TestPersonalLoadSectionOverridesSomeThresholds(t *testing.T) {
 	}
 }
 
+// unpredicted_peak_bytes names the peak memory to expect of a run without history; without it there is none.
+func TestPersonalLoadSectionNamesThePeakOfARunWithoutHistory(t *testing.T) {
+	path := writeJSON(t, t.TempDir(), "config.json", object{"load": object{"unpredicted_peak_bytes": 8589934592}})
+
+	got, err := lists.LoadPersonal(path)
+
+	load := lists.DefaultLoad()
+	load.UnpredictedPeakBytes = 8 << 30
+	want := lists.Personal{Projects: map[string]lists.Switch{}, Load: load}
+	if err != nil || !reflect.DeepEqual(got, want) || lists.DefaultLoad().UnpredictedPeakBytes != 0 {
+		t.Fatalf("LoadPersonal = %#v, %v; want %#v, and no estimate by default", got, err, want)
+	}
+}
+
+func TestPersonalLoadSectionRejectsANegativePeakOfARunWithoutHistory(t *testing.T) {
+	path := writeJSON(t, t.TempDir(), "config.json", object{"load": object{"unpredicted_peak_bytes": -1}})
+
+	_, err := lists.LoadPersonal(path)
+
+	want := "heavy: " + path + ": expected " + lists.PersonalForm + `, got {"load":{"unpredicted_peak_bytes":-1}}`
+	if err == nil || err.Error() != want {
+		t.Fatalf("LoadPersonal error = %v, want %q", err, want)
+	}
+}
+
 // A list that names no max_parallel leaves the limit to the machine configuration.
 func TestPersonalLoadSectionWithoutMaxParallelSaysSo(t *testing.T) {
 	path := writeJSON(t, t.TempDir(), "config.json", object{"load": object{"reserve_bytes": 5}})

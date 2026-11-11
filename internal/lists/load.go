@@ -23,6 +23,9 @@ type Load struct {
 	LoadPerCore float64
 	// SwapBytesPer2s: more swapped out per 2 s, averaged over 30 s, admits no run.
 	SwapBytesPer2s int64
+	// UnpredictedPeakBytes is the peak memory to expect of a run without history, with which it may start beside
+	// other runs; 0, the default, lets such a run start only alone.
+	UnpredictedPeakBytes int64
 }
 
 // DefaultLoad returns the thresholds of design G4 and G5.
@@ -47,7 +50,8 @@ func decodeLoad(raw json.RawMessage) (Load, bool) {
 		return Load{}, false
 	}
 	integers := map[string]*int{"max_parallel": &load.MaxParallel, "host_pressure_percent": &load.HostPressurePercent, "host_recovered_percent": &load.HostRecoveredPercent}
-	sizes := map[string]*int64{"reserve_bytes": &load.ReserveBytes, "vm_pressure_bytes": &load.VMPressureBytes, "vm_recovered_bytes": &load.VMRecoveredBytes, "swap_bytes_per_2s": &load.SwapBytesPer2s}
+	sizes := map[string]*int64{"reserve_bytes": &load.ReserveBytes, "vm_pressure_bytes": &load.VMPressureBytes, "vm_recovered_bytes": &load.VMRecoveredBytes, "swap_bytes_per_2s": &load.SwapBytesPer2s,
+		"unpredicted_peak_bytes": &load.UnpredictedPeakBytes}
 	for key, value := range fields {
 		if isNull(value) {
 			return Load{}, false
@@ -74,5 +78,5 @@ func decodeLoad(raw json.RawMessage) (Load, bool) {
 func (l Load) valid() bool {
 	percent := func(value int) bool { return value >= 0 && value <= 100 }
 	return l.MaxParallel >= 1 && l.ReserveBytes >= 0 && l.VMPressureBytes >= 0 && l.VMRecoveredBytes >= 0 &&
-		l.SwapBytesPer2s >= 0 && l.LoadPerCore >= 0 && percent(l.HostPressurePercent) && percent(l.HostRecoveredPercent)
+		l.SwapBytesPer2s >= 0 && l.UnpredictedPeakBytes >= 0 && l.LoadPerCore >= 0 && percent(l.HostPressurePercent) && percent(l.HostRecoveredPercent)
 }

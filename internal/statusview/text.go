@@ -14,8 +14,9 @@ import (
 const commandWidth = 60
 
 // Text prints one aligned line per run: state, id, command, directory (under home as ~), memory and time. Without
-// an active run the first line says the queue is free.
-func Text(runs []protocol.RunStatus, home string) string {
+// an active run the first line says the queue is free. estimate is unpredicted_peak_bytes of the personal list, the
+// peak heavy plans a run without history with, 0 for none.
+func Text(runs []protocol.RunStatus, home string, estimate int64) string {
 	var lines strings.Builder
 	active := false
 	for _, run := range runs {
@@ -26,7 +27,7 @@ func Text(runs []protocol.RunStatus, home string) string {
 	}
 	var rows [][]string
 	for _, run := range runs {
-		rows = append(rows, []string{state(run), run.ID, cut(run.Command), homeRelative(run.Directory, home), memory(run), moment(run)})
+		rows = append(rows, []string{state(run), run.ID, cut(run.Command), homeRelative(run.Directory, home), memory(run, estimate), moment(run)})
 	}
 	lines.WriteString(align(rows))
 	return lines.String()
@@ -61,16 +62,21 @@ func homeRelative(directory, home string) string {
 	return directory
 }
 
-// memory is the RSS of an active run, the expected peak of a waiting one (~? without history), - for a finished one.
-func memory(run protocol.RunStatus) string {
-	switch run.State {
-	case "waiting":
-		if run.PredictedBytes == 0 {
-			return "~?"
-		}
-		return "~" + gibibytes(run.PredictedBytes)
-	case "finished":
+// memory is the RSS of an active run, the expected peak of a waiting one, - for a finished one. A run without
+// history shows the estimate heavy plans it with, also while it runs, and ~? while it waits without one.
+func memory(run protocol.RunStatus, estimate int64) string {
+	unknown := run.PredictedBytes == 0
+	switch {
+	case run.State == "finished":
 		return "-"
+	case run.State == "waiting" && unknown && estimate > 0:
+		return "~" + gibibytes(estimate) + " est."
+	case run.State == "waiting" && unknown:
+		return "~?"
+	case run.State == "waiting":
+		return "~" + gibibytes(run.PredictedBytes)
+	case unknown && estimate > 0:
+		return gibibytes(run.RSSBytes) + " (est. " + gibibytes(estimate) + ")"
 	}
 	return gibibytes(run.RSSBytes)
 }

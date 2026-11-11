@@ -32,7 +32,7 @@ func nextFetch(t *testing.T, model Model) tea.Cmd {
 // FR-33: the dashboard asks again 2 s after each answer
 func TestAnswerOfTheDaemonStartsTheNextRefreshAfterTwoSeconds(t *testing.T) {
 	daemon := &fakeDaemon{answers: []fetchAnswer{{status: protocol.Status{Runs: exampleRuns()}}}}
-	model := New(Options{Host: "Mac", Fetch: daemon.fetch, Send: daemon.send, Now: func() time.Time { return exampleNow }})
+	model := New(Options{Host: "Mac", Fetch: daemon.fetch, Send: daemon.send, Now: func() time.Time { return exampleNow }, Estimate: func() int64 { return 0 }})
 	answer := run(t, model.Init(), "Init")
 
 	began := time.Now()

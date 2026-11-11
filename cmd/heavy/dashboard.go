@@ -33,7 +33,8 @@ func runDashboard(arguments []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	host, _, _ = strings.Cut(host, ".")
-	model := dashboard.New(dashboard.Options{Host: host, Fetch: dashboardFetch(connect), Send: dashboardSend(connect), Now: time.Now})
+	model := dashboard.New(dashboard.Options{Host: host, Fetch: dashboardFetch(connect), Send: dashboardSend(connect), Now: time.Now,
+		Estimate: func() int64 { return unpredictedPeak(io.Discard) }})
 	if _, err := tea.NewProgram(model, tea.WithOutput(stdout)).Run(); err != nil {
 		fmt.Fprintf(stderr, "heavy: the dashboard ended with an error: %v\n", err)
 		return 1

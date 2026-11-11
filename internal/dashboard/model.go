@@ -26,6 +26,9 @@ type Options struct {
 	Send func(protocol.Message) (string, error)
 	// Now is the clock; the location of its times is the one the dashboard shows times in.
 	Now func() time.Time
+	// Estimate is unpredicted_peak_bytes of the personal list, the peak heavy plans a run without history with, 0
+	// for none; the view asks with every frame, so a changed list shows at once.
+	Estimate func() int64
 }
 
 // Model is the state of the dashboard: the last queue the daemon sent, the selected run, the open stop question

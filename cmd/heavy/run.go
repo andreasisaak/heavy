@@ -77,7 +77,7 @@ func runStatus(arguments []string, stdout, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "heavy: finding the home directory: %v\n", err)
 			return 1
 		}
-		fmt.Fprint(stdout, statusview.Text(status.Runs, home))
+		fmt.Fprint(stdout, statusview.Text(status.Runs, home, unpredictedPeak(stderr)))
 		if status.VM != "" {
 			fmt.Fprintln(stdout, status.VM)
 		}

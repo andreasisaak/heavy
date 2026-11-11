@@ -51,7 +51,7 @@ func (f *fakeDaemon) send(message protocol.Message) (string, error) {
 // started is the dashboard at width 80 after its first fetch.
 func started(t *testing.T, daemon *fakeDaemon) Model {
 	t.Helper()
-	model := New(Options{Host: "Mac", Fetch: daemon.fetch, Send: daemon.send, Now: func() time.Time { return exampleNow }})
+	model := New(Options{Host: "Mac", Fetch: daemon.fetch, Send: daemon.send, Now: func() time.Time { return exampleNow }, Estimate: func() int64 { return 0 }})
 	model = step(t, model, tea.WindowSizeMsg{Width: 80, Height: 24})
 	return step(t, model, run(t, model.Init(), "Init"))
 }

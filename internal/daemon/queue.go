@@ -147,7 +147,7 @@ func (q *queue) schedulerState(now time.Time) scheduler.State {
 		state.Runs = append(state.Runs, scheduler.Run{
 			ID: current.id, Checkout: current.register.Worktree, Status: current.status, Order: current.order,
 			Arrived: current.arrived, Started: current.started, Predicted: current.predicted,
-			PredictedBytes: current.predictedBytes, Exclusive: current.register.Exclusive, Restart: current.register.Restart,
+			PredictedBytes: current.predictedBytes, PeakBytes: current.peak, Exclusive: current.register.Exclusive, Restart: current.register.Restart,
 			PausedReason: current.pausedReason, PausedAt: current.pausedAt,
 		})
 	}

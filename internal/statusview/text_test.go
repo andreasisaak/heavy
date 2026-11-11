@@ -23,7 +23,7 @@ func TestStatusPrintsOneAlignedLinePerRun(t *testing.T) {
 		{State: "waiting", Position: 1, ID: "d4e5f6", Command: "make test", Directory: "/sites/other", Since: 1_800_000_060, PredictedBytes: 3 * gibibyte},
 	}
 
-	got := statusview.Text(runs, "/home/example")
+	got := statusview.Text(runs, "/home/example", 0)
 
 	want := "running    a1b2c3  make ci    ~/main-feature  2.5 GiB   since " + clock(1_800_000_000) + "\n" +
 		"waiting 1  d4e5f6  make test  /sites/other    ~3.0 GiB  since " + clock(1_800_000_060) + "\n"
@@ -34,7 +34,7 @@ func TestStatusPrintsOneAlignedLinePerRun(t *testing.T) {
 
 // bin/test_heavy.py:226
 func TestStatusReportsAFreeQueue(t *testing.T) {
-	if got := statusview.Text(nil, "/home/example"); got != "heavy: no heavy run is active\n" {
+	if got := statusview.Text(nil, "/home/example", 0); got != "heavy: no heavy run is active\n" {
 		t.Fatalf("Text = %q", got)
 	}
 }
@@ -46,7 +46,7 @@ func TestStatusPrintsFinishedRunsAfterTheQueueWithTheirResult(t *testing.T) {
 		{State: "finished", ID: "aaaaaa", Command: "make ci", Directory: "/sites/main", Ended: 1_800_000_000, ExitStatus: 0},
 	}
 
-	got := statusview.Text(runs, "/home/example")
+	got := statusview.Text(runs, "/home/example", 0)
 
 	want := "heavy: no heavy run is active\n" +
 		"failed 2  bbbbbb  make test  /sites/other  -  ended " + clock(1_800_000_010) + "\n" +
@@ -65,7 +65,7 @@ func TestStatusCutsALongCommandToKeepTheLinesReadable(t *testing.T) {
 	command := "docker compose run --rm -T frontend sh -c " + strings.Join(files, " ")
 	runs := []protocol.RunStatus{{State: "running", ID: "a1b2c3", Command: command, Directory: "/sites/main", Since: 1_800_000_000}}
 
-	got := statusview.Text(runs, "/home/example")
+	got := statusview.Text(runs, "/home/example", 0)
 
 	want := "running  a1b2c3  " + command[:59] + "…  /sites/main  0.0 GiB  since " + clock(1_800_000_000) + "\n"
 	if got != want {
@@ -79,7 +79,7 @@ func TestStatusNamesThePauseAndAnUnknownPrediction(t *testing.T) {
 		{State: "waiting", Position: 1, ID: "d4e5f6", Command: "make e2e", Directory: "/sites/main", Since: 1_800_000_060},
 	}
 
-	got := statusview.Text(runs, "/home/example")
+	got := statusview.Text(runs, "/home/example", 0)
 
 	want := "paused user  a1b2c3  make ci   /sites/main  1.0 GiB  since " + clock(1_800_000_000) + "\n" +
 		"waiting 1    d4e5f6  make e2e  /sites/main  ~?       since " + clock(1_800_000_060) + "\n"

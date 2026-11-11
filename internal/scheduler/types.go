@@ -50,8 +50,10 @@ type Run struct {
 	Predicted bool
 	// PredictedBytes is the expected peak memory of the run (design G11).
 	PredictedBytes int64
-	Exclusive      bool
-	Restart        bool
+	// PeakBytes is the highest memory measured of the run since its start; 0 for a waiting run.
+	PeakBytes int64
+	Exclusive bool
+	Restart   bool
 	// PausedReason is NotPaused unless Status is Paused.
 	PausedReason PauseReason
 	// PausedAt is when the run was paused; zero unless Status is Paused.
