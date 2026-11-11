@@ -38,7 +38,6 @@ func TestLoadWithoutTheFileFindsNoMachineLimit(t *testing.T) {
 
 func TestLoadRejectsEveryOtherShape(t *testing.T) {
 	cases := map[string]string{
-		"unknown key":         `{"max_parallel": 8, "slots": "/var/lib/heavy/slots", "fair": true}`,
 		"no limit":            `{"slots": "/var/lib/heavy/slots"}`,
 		"no folder":           `{"max_parallel": 8}`,
 		"limit of zero":       `{"max_parallel": 0, "slots": "/var/lib/heavy/slots"}`,
@@ -60,6 +59,18 @@ func TestLoadRejectsEveryOtherShape(t *testing.T) {
 				t.Fatalf("Load error = %v, found %v, want %q", err, found, want)
 			}
 		})
+	}
+}
+
+// A newer heavy may know more keys of the machine configuration; an older one on the same machine reads the rest.
+func TestLoadIgnoresAKeyOfANewerHeavy(t *testing.T) {
+	path := configFile(t, `{"max_parallel": 8, "slots": "/var/lib/heavy/slots", "fair": true}`)
+
+	config, found, err := slots.Load(path)
+
+	want := slots.Config{Path: path, MaxParallel: 8, Folder: "/var/lib/heavy/slots"}
+	if err != nil || !found || config != want {
+		t.Fatalf("Load = %#v, %v, %v, want %#v, true", config, found, err, want)
 	}
 }
 

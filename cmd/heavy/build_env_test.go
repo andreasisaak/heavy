@@ -12,10 +12,10 @@ import (
 )
 
 // runStart starts build.sh session-start with the hook input on stdin and CLAUDE_ENV_FILE set.
-func (p *pluginRoot) runStart(t *testing.T, input, envFile string) outcome {
+func (p *pluginRoot) runStart(t *testing.T, input, envFile string, environment ...string) outcome {
 	t.Helper()
 	command := exec.Command("/bin/sh", filepath.Join(p.root, "hooks", "build.sh"), "session-start")
-	command.Env = []string{"PATH=" + p.path, "HOME=" + t.TempDir(), "CLAUDE_ENV_FILE=" + envFile}
+	command.Env = append([]string{"PATH=" + p.path, "HOME=" + t.TempDir(), "CLAUDE_ENV_FILE=" + envFile}, environment...)
 	command.Stdin = strings.NewReader(input)
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
@@ -40,13 +40,18 @@ func TestBuildScriptWritesTheSessionEnvironmentBeforeTheFirstBuild(t *testing.T)
 	atBuild := filepath.Join(plugin.fakes, "env-at-build")
 	write(t, filepath.Join(plugin.fakes, "during"), "cat "+envFile+" > "+atBuild+"\n")
 
-	got := plugin.runStart(t, startInput, envFile)
+	state := filepath.Join(t.TempDir(), "state")
+
+	got := plugin.runStart(t, startInput, envFile, "HEAVY_STATE_DIRECTORY="+state)
 
 	root, err := filepath.EvalSymlinks(plugin.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	shims := filepath.Join(root, "shims")
+	if linked, err := os.Readlink(filepath.Join(state, "current")); err != nil || linked != root {
+		t.Fatalf("$STATE/current = %q, %v; want a link to %s", linked, err, root)
+	}
+	shims := filepath.Join(state, "current", "shims")
 	want := "case \"$PATH\" in " + shims + ":*) ;; *) export PATH=" + shims + ":\"$PATH\" ;; esac\nexport HEAVY_SESSION=5968af83-2137-45a0-b3d2-6d3a974c6814\n"
 	written, err := os.ReadFile(atBuild)
 	if err != nil || string(written) != want {
@@ -58,6 +63,32 @@ func TestBuildScriptWritesTheSessionEnvironmentBeforeTheFirstBuild(t *testing.T)
 	ran, err := os.ReadFile(filepath.Join(plugin.fakes, "order"))
 	if want := fmt.Sprintf("ran --hook session-start claude=%d\n", os.Getpid()); err != nil || string(ran) != want {
 		t.Fatalf("order = %q, %v; want the hook with the Claude PID %q", ran, err, want)
+	}
+}
+
+// Without HEAVY_STATE_DIRECTORY the link lies in ~/.cache/heavy, and build.sh leaves a link that is there: the hook
+// of the built heavy compares the versions and turns it.
+func TestBuildScriptLeavesALinkToAnotherHeavyToTheHook(t *testing.T) {
+	plugin := newPluginRoot(t)
+	envFile, home, other := filepath.Join(t.TempDir(), "env.sh"), t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".cache", "heavy"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".cache", "heavy", "current")
+	if err := os.Symlink(other, link); err != nil {
+		t.Fatal(err)
+	}
+
+	plugin.runStart(t, startInput, envFile, "HOME="+home)
+
+	shims := filepath.Join(link, "shims")
+	want := "case \"$PATH\" in " + shims + ":*) ;; *) export PATH=" + shims + ":\"$PATH\" ;; esac\nexport HEAVY_SESSION=5968af83-2137-45a0-b3d2-6d3a974c6814\n"
+	written, err := os.ReadFile(envFile)
+	if err != nil || string(written) != want {
+		t.Fatalf("CLAUDE_ENV_FILE = %q, %v; want %q", written, err, want)
+	}
+	if linked, err := os.Readlink(link); err != nil || linked != other {
+		t.Fatalf("the link = %q, %v; want it left at %s", linked, err, other)
 	}
 }
 

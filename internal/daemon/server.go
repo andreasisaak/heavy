@@ -14,6 +14,7 @@ import (
 	"github.com/andreasisaak/heavy/internal/procs"
 	"github.com/andreasisaak/heavy/internal/protocol"
 	"github.com/andreasisaak/heavy/internal/sampler"
+	"github.com/andreasisaak/heavy/internal/scheduler"
 	"github.com/andreasisaak/heavy/internal/slots"
 )
 
@@ -128,11 +129,26 @@ func (s *server) installedStamp() string {
 	return stamp
 }
 
-// busy reports runs; the daemon hands over only without them.
-func (s *server) busy() bool {
+// bound reports a run that would not survive a new daemon. A client announces its run to a new daemon as waiting
+// or as running with the process group of its command, and no more: a run that is paused would stay paused, one
+// that got its start but has not named its process group yet would be announced as waiting and start twice, and
+// one that ends for a restart or a stop is between both. The daemon hands over to a newer heavy as soon as it
+// holds no such run; the waiting and the running ones go to the new daemon through their clients.
+func (s *server) bound() bool {
 	s.state.Lock()
 	defer s.state.Unlock()
-	return len(s.queue.runs) > 0
+	now := s.clock.Now()
+	for _, current := range s.queue.runs {
+		switch {
+		case current.restarting, current.stopping, now.Before(current.restartedAt.Add(procs.KillAfter)):
+			return true
+		case current.status == scheduler.Waiting:
+		case current.status == scheduler.Running && current.processGroup > 1:
+		default:
+			return true
+		}
+	}
+	return false
 }
 
 // idle reports neither runs nor monitors; the daemon ends after IdleTimeout of it (design G3).

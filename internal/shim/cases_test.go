@@ -1,12 +1,10 @@
 package shim_test
 
 import (
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"testing"
 
-	"github.com/andreasisaak/heavy/internal/lists"
 	"github.com/andreasisaak/heavy/internal/shim"
 )
 
@@ -82,21 +80,20 @@ func TestMissingRealProgramFailsWithItsName(t *testing.T) {
 	}
 }
 
-// test_heavy_shim.py:198: 0.6 ended with the Python traceback, whose last line was `ValueError: <path>: expected …`.
-func TestBrokenProjectListFailsTheCall(t *testing.T) {
+// A .heavy.json the shim cannot read whole never stops the call: `make ci` here names no command heavy could use,
+// so the call is a light one and reaches make. Up to 1.2.0 the shim failed every call in such a project.
+func TestBrokenProjectListLetsTheCallThrough(t *testing.T) {
 	f := newFixture(t)
 	f.writeProjectList(t, `{"commands": "make ci"}`)
 
 	got := f.call(t, f.project, f.environment(), "", "make", "ci")
 
-	path := filepath.Join(f.project, ".heavy.json")
-	want := outcome{exitStatus: 1, stderr: "heavy: " + path + ": expected " + lists.ProjectListForm + `, got {"commands":"make ci"}` + "\n"}
+	want := outcome{stdout: printed("make", "ci")}
 	if got != want {
 		t.Fatalf("make ci with a broken list = %+v, want %+v", got, want)
 	}
 }
 
-// test_heavy_shim.py:210: the shims are links to the heavy binary, which tells the program by the link's name.
 func TestEveryShimStartsItsOwnProgram(t *testing.T) {
 	f := newFixture(t)
 	names := []string{"bun", "bunx", "composer", "docker", "gmake", "make", "npm", "npx", "pnpm", "pnpx", "uv", "uvx", "yarn"}

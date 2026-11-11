@@ -75,7 +75,7 @@ type received struct {
 }
 
 func (s *session) run() int {
-	if err := s.connect(); err != nil {
+	if err := s.connect(0); err != nil {
 		fmt.Fprintln(s.options.Stderr, err)
 		return 1
 	}
@@ -107,8 +107,10 @@ func (s *session) run() int {
 }
 
 // connect reaches the daemon and announces the run, again with what the new daemon needs after a lost one.
-func (s *session) connect() error {
-	link, err := daemon.Connect(s.options.Connect)
+func (s *session) connect(startAfter time.Duration) error {
+	options := s.options.Connect
+	options.StartAfter = startAfter
+	link, err := daemon.Connect(options)
 	if err != nil {
 		return err
 	}

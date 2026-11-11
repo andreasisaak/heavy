@@ -11,7 +11,7 @@ import (
 
 // answerStatus sends the queue; with Detail also the machine for the dashboard, and the daemon then looks at the
 // containers outside the runs every 10 s while the dashboard keeps asking (design G13).
-func (s *server) answerStatus(connection net.Conn, request protocol.Status) {
+func (s *server) answerStatus(connection net.Conn, request protocol.Status, client protocol.Identity) {
 	var recent []history.Record
 	if request.Detail {
 		var err error
@@ -22,6 +22,9 @@ func (s *server) answerStatus(connection net.Conn, request protocol.Status) {
 	s.state.Lock()
 	now := s.clock.Now()
 	status := protocol.Status{Runs: s.queue.snapshot(now), VM: s.machine.VMStatus(), Monitors: s.monitoredSessions()}
+	if client.Since(protocol.WaitsSince) {
+		s.nameHoldsLocked(status.Runs)
+	}
 	if request.Detail {
 		s.detailAt = now
 		status.Machine = s.machineStatus(now, recent)

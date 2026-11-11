@@ -7,11 +7,12 @@ import (
 	"path/filepath"
 )
 
-// Project is heavy in one checkout: whether the catalogue of heavy runners counts, and the listed commands.
-// The zero value is heavy off.
+// Project is heavy in one checkout: whether the catalogue of heavy runners counts, the listed commands, and the
+// notes on what heavy left out of its .heavy.json. The zero value is heavy off.
 type Project struct {
 	Catalogue bool
 	Commands  []Entry
+	Warnings  []string
 }
 
 // ProjectOf returns heavy in directory: its checkout's .heavy.json plus the personal entry of its main checkout.
@@ -33,10 +34,9 @@ func ProjectOf(directory string, personal Personal) (Project, error) {
 		return Project{}, failure("%v", err)
 	}
 	var commands []Entry
+	var warnings []string
 	if listed {
-		if commands, err = LoadProjectList(path); err != nil {
-			return Project{}, err
-		}
+		commands, warnings = LoadProjectList(path)
 	}
-	return Project{Catalogue: listed || switched, Commands: append(commands, current.Commands...)}, nil
+	return Project{Catalogue: listed || switched, Commands: append(commands, current.Commands...), Warnings: warnings}, nil
 }

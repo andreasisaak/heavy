@@ -147,15 +147,3 @@ func TestGitMissingFromPathIsAnError(t *testing.T) {
 		t.Fatalf("ProjectOf error = %v, want %q", err, want)
 	}
 }
-
-func TestBrokenProjectListFailsTheProject(t *testing.T) {
-	main := checkout(t, filepath.Join(t.TempDir(), "main"))
-	path := writeJSON(t, main, ".heavy.json", object{"commands": []int{1}})
-
-	_, err := lists.ProjectOf(main, noPersonal())
-
-	want := "heavy: " + path + ": expected " + lists.ProjectListForm + ", got {\"commands\":[1]}"
-	if err == nil || err.Error() != want {
-		t.Fatalf("ProjectOf error = %v, want %q", err, want)
-	}
-}

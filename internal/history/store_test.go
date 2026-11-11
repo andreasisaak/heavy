@@ -83,7 +83,8 @@ func TestBrokenHistoryLineIsAnErrorWithFileAndLine(t *testing.T) {
 	}
 }
 
-func TestRecordWithAnUnknownFieldIsAnError(t *testing.T) {
+// The daemon of a newer heavy may write fields into the history an older one does not know; it reads the rest.
+func TestRecordWithAFieldOfANewerHeavyStillCounts(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "2026-11-07.jsonl")
 	if err := history.Append(directory, record("ci", "/sites/main", time.Date(2026, 11, 7, 12, 0, 0, 0, time.Local), 1)); err != nil {
@@ -95,11 +96,10 @@ func TestRecordWithAnUnknownFieldIsAnError(t *testing.T) {
 		t.Fatalf("writing %s: %v", path, err)
 	}
 
-	_, _, err := history.Predict(directory, "ci run", "ci", "/sites/main")
+	predicted, known, err := history.Predict(directory, "ci run", "ci", "/sites/main")
 
-	want := "heavy: " + path + `:1: json: unknown field "extra"`
-	if err == nil || err.Error() != want {
-		t.Fatalf("Predict error = %v, want %q", err, want)
+	if err != nil || !known || predicted <= 0 {
+		t.Fatalf("Predict = %d, %v, %v; want the peak of the record", predicted, known, err)
 	}
 }
 

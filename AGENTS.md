@@ -8,7 +8,7 @@ Claude Code plugin and its own marketplace: one Go binary that queues the heavy 
 - Tests use `internal/testkit`: temporary state directories (`testkit.StateDir`, short paths for the 103-byte socket limit of macOS), temporary homes, fake `docker`, `herdr` and other programs. They never touch the real queue in `~/.cache/heavy`, the real herdr or the real `CLAUDE_PLUGIN_DATA`.
 - Test names describe behaviour (`TestTheDaemonIsNoChildOfTheHeavyThatStartsIt`); assertions compare whole values with `reflect.DeepEqual` or exact strings.
 - Code, comments, CLI output, hook texts and skills in English; one topic per file, about 200 lines; platform code behind build tags (`*_darwin.go`, `*_linux.go`). Code that parses `/proc` or cgroup files takes the root folder as an argument and compiles everywhere, so the Mac tests cover it; only the wiring to `/proc` is tagged. A test file named `*_linux_test.go` does not run on the Mac.
-- heavy's own JSON formats decode strictly into typed structs; hook input from Claude Code decodes without `DisallowUnknownFields`, since Claude Code adds fields.
+- Several versions of heavy run on one machine at once: sessions keep the hooks of the version they started with, and one daemon serves them all. Every format they share is therefore read past what a version does not know, never with `DisallowUnknownFields`: the lists (`internal/lists` notes it in `Warnings` and never returns an error to a hook or shim), the protocol, the session registrations, the history, the machine configuration. A hook or shim never refuses a call over a list. A new field in a message goes only to a heavy that knows it (`Identity.Since`, as `RunStatus.Waits`), because 1.2.0 and older read the protocol strictly. Only the helper protocol stays strict, since daemon and helper are one build.
 - The daemon owns the queue: other code reads it through the protocol (`client.Status`; `client.StatusIfRunning` in hooks and shims, which starts no daemon) or `heavy --status --json`.
 - Shims run on every `docker`, `make` and package manager call: keep the light path free of daemon calls, git and list reads (under 15 ms for `make --version`, `internal/shim/speed_test.go`).
 - SessionStart hook stdout becomes Claude context, so it stays empty; notes go to stderr. A hook's `updatedInput` replaces the whole tool input, so it sends every field back.
@@ -34,7 +34,7 @@ The `docker run` line runs the tests on Linux, as a user that is not root (root 
 
 1. Raise `version` in `.claude-plugin/plugin.json` and add a `CHANGELOG.md` section; update `README.md` in the same commit when behaviour changes.
 2. The user pushes `main`; the marketplace `heavy` has auto-update on, so sessions install the new version on their own. The first one downloads the build GitHub made of it, or builds it while that build is not there yet.
-3. The running daemon hands over to a newer version only while no run is active; until then it keeps serving every session.
+3. The running daemon hands over to the first heavy of the newer version that queues a run; waiting and running runs go over through their clients (`server.bound` names what holds it back: a paused, restarting or just starting run). The hooks of the newer version turn the link `$STATE/current`, behind which the shims of every session lie (`internal/current`). A daemon of 1.2.0 or older still hands over only without runs, and sessions started before 1.3.0 keep their versioned `PATH`.
 
 ## Architecture
 
@@ -46,12 +46,12 @@ A heavy call flows hook → client → daemon → scheduler → process control:
 |---------|------|
 | `internal/guard` | PreToolUse hook for Bash: finds heavy commands, puts `heavy` in front, sends the call to the background, denies subagent runs and polls of the session's own run |
 | `internal/stophook` | PreToolUse hook for TaskStop and KillShell: speed bump before stopping a run |
-| `internal/sessionstart`, `internal/sessions` | SessionStart hook: shims and `HEAVY_SESSION` into `CLAUDE_ENV_FILE`, registration `$STATE/sessions/<claude-pid>.json` |
+| `internal/sessionstart`, `internal/sessions`, `internal/current` | SessionStart hook: shims and `HEAVY_SESSION` into `CLAUDE_ENV_FILE`, registration `$STATE/sessions/<claude-pid>.json`; the link `$STATE/current` to the plugin folder of the newest heavy, whose `shims/` is on `PATH` |
 | `internal/shim` | the shims: real program for light calls, `HEAVY_RUN`/`HEAVY_CPUS` injection into docker calls inside a run |
 | `internal/shell`, `internal/catalogue`, `internal/detect`, `internal/label`, `internal/lists` | Bash parsing on `mvdan.cc/sh/v3`, the catalogue of runners, matching against `.heavy.json` and the personal list, the short name of a run |
 | `internal/client` | `heavy <command>` and the CLI options: registers, waits, runs the command in its own process group, watches `red` patterns, re-announces a run to a new daemon |
 | `internal/protocol`, `internal/daemon` | JSON-lines protocol v1 over `$STATE/daemon.sock`; the daemon samples every 2 s, decides, and runs the actions in one job loop |
-| `internal/scheduler` | pure `Decide(state, measurements, config, now)`: start, pause, resume, restart |
+| `internal/scheduler` | pure `Decide(state, measurements, config, now)`: start, pause, resume, restart; `Holds` names what keeps each waiting run, from the same conditions |
 | `internal/history` | run history per day under `$STATE/history/`, the expected peak of a command |
 | `internal/sampler`, `internal/helper`, `internal/procs`, `internal/dockercli` | host measurement (`sysctl`, `vm_stat` on a Mac, `/proc` on Linux), the helper container `heavy-helper:<stamp>` built from `bin/heavy-linux` on a Mac and the same helper inside the daemon on Linux (`sampler.Local`), process groups, tagged VM processes and containers of a run, docker calls with a deadline |
 | `internal/cgroup`, `internal/procfs`, `internal/platform` | the memory the cgroup v2 limits of the daemon's user leave, `/proc/<pid>/stat`, and the word for where docker runs (`VM` or `machine`) |
@@ -71,10 +71,10 @@ A heavy call flows hook → client → daemon → scheduler → process control:
 - Linux refuses `O_CREAT` on the file of another user in a sticky folder (`fs.protected_regular`), so `internal/slots` opens a slot file first and creates only a missing one.
 - A daemon learns of the runs of other users only through the slots they hold; without a machine configuration it knows none.
 - In an interactive session Claude Code takes the Bash environment before the SessionStart hooks end, so `build.sh` writes the shims and `HEAVY_SESSION` into `CLAUDE_ENV_FILE` before any build. `claude -p` waits for the hooks.
-- `claude --resume` applies the env files of earlier SessionStart hooks again, also of a plugin that is now disabled: after an update only new sessions get the new `PATH`.
+- `claude --resume` applies the env files of earlier SessionStart hooks again, also of a plugin that is now disabled, and a session never gets a new `PATH`. So the shims are on `PATH` behind the link `$STATE/current`, and nothing that must change with an update belongs into the env file.
 - Claude Code starts no plugin monitors with `claude -p` and does not restart them on `/reload-plugins`; the monitor's stderr reaches no model, so everything the session must hear goes to stdout.
 - Claude Code ends a stopped task together with every process below it by parent PID. `daemon.Connect` therefore starts the daemon through `heavy --daemon --detach`, so it hangs on launchd.
 - The kernel name of native Claude Code is its version (such as `2.1.319`); the monitor finds it by `argv[0]` from `kern.procargs2`, not by `p_comm` (`internal/monitor/process_darwin.go`).
-- A daemon built in this repository serves every session on the machine and hands over only when idle. Develop with `claude --plugin-dir . --settings '{"enabledPlugins":{"heavy@heavy":false}}'` and use `HEAVY_STATE_DIRECTORY` for probes that should not reach the real queue.
+- A daemon built in this repository serves every session on the machine, and its session start turns `~/.cache/heavy/current` to this checkout. Develop with `claude --plugin-dir . --settings '{"enabledPlugins":{"heavy@heavy":false}}'` and use `HEAVY_STATE_DIRECTORY` for probes that should not reach the real queue.
 - The herdr plugin link is global for all herdr servers (`herdr --session <name>` included); relinking it to another heavy changes the sidebar of every session.
 - Under load, `docker inspect` over all containers takes longer than the 5-s deadline; `SystemDocker` therefore inspects only containers it has not seen within 30 s.

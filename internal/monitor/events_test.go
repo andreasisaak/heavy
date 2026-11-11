@@ -127,7 +127,7 @@ func TestMonitorWithASessionAndABrokenRegistrationEndsWithTheReadError(t *testin
 
 	link.event(t, eventFor("s-9", "my run"))
 
-	want := "heavy: reading the session registration " + path + ": unexpected EOF"
+	want := "heavy: reading the session registration " + path + ": unexpected end of JSON input"
 	if err := run.result(t); err == nil || err.Error() != want {
 		t.Fatalf("Run = %v, want %q", err, want)
 	}

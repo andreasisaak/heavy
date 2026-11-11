@@ -42,41 +42,44 @@ func DefaultLoad() Load {
 	}
 }
 
-// decodeLoad overrides the thresholds a "load" section names; every key is optional.
-func decodeLoad(raw json.RawMessage) (Load, bool) {
-	fields, isObject := decodeObject(raw)
+// decodeLoad overrides the thresholds a "load" section names; every key is optional. A key heavy does not know and
+// a value it cannot use are noted, and the threshold keeps its default.
+func decodeLoad(raw json.RawMessage, n *notes) Load {
 	load := DefaultLoad()
+	fields, isObject := decodeObject(raw)
 	if !isObject {
-		return Load{}, false
+		n.unusable("load", raw, "an object", "heavy uses the default thresholds")
+		return load
 	}
-	integers := map[string]*int{"max_parallel": &load.MaxParallel, "host_pressure_percent": &load.HostPressurePercent, "host_recovered_percent": &load.HostRecoveredPercent}
-	sizes := map[string]*int64{"reserve_bytes": &load.ReserveBytes, "vm_pressure_bytes": &load.VMPressureBytes, "vm_recovered_bytes": &load.VMRecoveredBytes, "swap_bytes_per_2s": &load.SwapBytesPer2s,
-		"unpredicted_peak_bytes": &load.UnpredictedPeakBytes}
-	for key, value := range fields {
-		if isNull(value) {
-			return Load{}, false
-		}
-		var err error
+	limits := map[string]*int{"max_parallel": &load.MaxParallel}
+	percents := map[string]*int{"host_pressure_percent": &load.HostPressurePercent, "host_recovered_percent": &load.HostRecoveredPercent}
+	sizes := map[string]*int64{"reserve_bytes": &load.ReserveBytes, "vm_pressure_bytes": &load.VMPressureBytes, "vm_recovered_bytes": &load.VMRecoveredBytes,
+		"swap_bytes_per_2s": &load.SwapBytesPer2s, "unpredicted_peak_bytes": &load.UnpredictedPeakBytes}
+	for _, key := range sortedKeys(fields) {
+		value := fields[key]
+		var whole int64
+		var number float64
+		isWhole := !isNull(value) && json.Unmarshal(value, &whole) == nil
 		switch {
-		case integers[key] != nil:
-			err = json.Unmarshal(value, integers[key])
+		case limits[key] != nil && isWhole && whole >= 1:
+			*limits[key], load.MaxParallelSet = int(whole), true
+		case limits[key] != nil:
+			n.unusable("load."+key, value, "a whole number from 1", "heavy uses its default")
+		case percents[key] != nil && isWhole && whole >= 0 && whole <= 100:
+			*percents[key] = int(whole)
+		case percents[key] != nil:
+			n.unusable("load."+key, value, "a whole number from 0 to 100", "heavy uses its default")
+		case sizes[key] != nil && isWhole && whole >= 0:
+			*sizes[key] = whole
 		case sizes[key] != nil:
-			err = json.Unmarshal(value, sizes[key])
+			n.unusable("load."+key, value, "whole bytes from 0", "heavy uses its default")
+		case key == "load_per_core" && !isNull(value) && json.Unmarshal(value, &number) == nil && number >= 0:
+			load.LoadPerCore = number
 		case key == "load_per_core":
-			err = json.Unmarshal(value, &load.LoadPerCore)
+			n.unusable("load."+key, value, "a number from 0", "heavy uses its default")
 		default:
-			return Load{}, false
+			n.unknown("load." + key)
 		}
-		if err != nil {
-			return Load{}, false
-		}
-		load.MaxParallelSet = load.MaxParallelSet || key == "max_parallel"
 	}
-	return load, load.valid()
-}
-
-func (l Load) valid() bool {
-	percent := func(value int) bool { return value >= 0 && value <= 100 }
-	return l.MaxParallel >= 1 && l.ReserveBytes >= 0 && l.VMPressureBytes >= 0 && l.VMRecoveredBytes >= 0 &&
-		l.SwapBytesPer2s >= 0 && l.UnpredictedPeakBytes >= 0 && l.LoadPerCore >= 0 && percent(l.HostPressurePercent) && percent(l.HostRecoveredPercent)
+	return load
 }

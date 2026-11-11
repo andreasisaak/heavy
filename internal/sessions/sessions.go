@@ -4,7 +4,6 @@
 package sessions
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,17 +48,16 @@ func Write(stateDirectory string, claudePID int, registration Registration) erro
 	return nil
 }
 
-// Read is the registration of a Claude Code PID, decoded strictly.
+// Read is the registration of a Claude Code PID. A field this heavy does not know is left out: the hook of a newer
+// heavy may have written it.
 func Read(stateDirectory string, claudePID int) (Registration, error) {
 	path := Path(stateDirectory, claudePID)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Registration{}, fmt.Errorf("heavy: reading the session registration %s: %w", path, err)
 	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
 	var registration Registration
-	if err := decoder.Decode(&registration); err != nil {
+	if err := json.Unmarshal(data, &registration); err != nil {
 		return Registration{}, fmt.Errorf("heavy: reading the session registration %s: %w", path, err)
 	}
 	return registration, nil

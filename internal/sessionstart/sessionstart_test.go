@@ -24,8 +24,12 @@ var started = time.Date(2026, 11, 8, 12, 30, 0, 0, time.UTC)
 // a temporary directory.
 func hook(t *testing.T, input string, envFile string) (int, string, string, sessionstart.Dependencies) {
 	t.Helper()
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "shims"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	deps := sessionstart.Dependencies{
-		Alive: everyProcessLives, EnvFile: envFile, Shims: "/plugins/heavy/shims", StateDirectory: testkit.StateDir(t), ClaudePID: 4242,
+		Alive: everyProcessLives, EnvFile: envFile, Root: root, StateDirectory: testkit.StateDir(t), ClaudePID: 4242,
 		Now: func() time.Time { return started }, HerdrPlugin: pluginOf(t, t.TempDir(), "1.0.1"),
 	}
 	var stdout, stderr bytes.Buffer
@@ -34,8 +38,9 @@ func hook(t *testing.T, input string, envFile string) (int, string, string, sess
 }
 
 // hooks/test_session_env.py:24: sourced twice, in bash and in zsh, the file puts the shims in front of PATH once
-// and keeps what was there
-func TestEnvFilePutsTheShimsFirstOnce(t *testing.T) {
+// and keeps what was there. The shims lie behind $STATE/current, a path without the version of the plugin, and the
+// link there names the plugin folder of this heavy.
+func TestEnvFilePutsTheShimsBehindTheLinkFirstOnce(t *testing.T) {
 	for _, shell := range []string{"/bin/bash", "/bin/zsh"} {
 		t.Run(shell, func(t *testing.T) {
 			if _, err := os.Stat(shell); err != nil {
@@ -46,7 +51,7 @@ func TestEnvFilePutsTheShimsFirstOnce(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			status, stdout, stderr, _ := hook(t, strings.Replace(sessionStart, "%s", t.TempDir(), 1), envFile)
+			status, stdout, stderr, deps := hook(t, strings.Replace(sessionStart, "%s", t.TempDir(), 1), envFile)
 			command := exec.Command(shell, "-c", `. "`+envFile+`"; . "`+envFile+`"; printf "%s %s %s" "$EXAMPLE" "$HEAVY_SESSION" "$PATH"`)
 			command.Env = []string{"PATH=/usr/bin:/bin"}
 			path, err := command.Output()
@@ -54,8 +59,11 @@ func TestEnvFilePutsTheShimsFirstOnce(t *testing.T) {
 			if status != 0 || stdout != "" || stderr != "" || err != nil {
 				t.Fatalf("hook = %d, %q, %q; sourcing: %v", status, stdout, stderr, err)
 			}
-			if want := "kept 5968af83-2137-45a0-b3d2-6d3a974c6814 /plugins/heavy/shims:/usr/bin:/bin"; string(path) != want {
+			if want := "kept 5968af83-2137-45a0-b3d2-6d3a974c6814 " + deps.StateDirectory + "/current/shims:/usr/bin:/bin"; string(path) != want {
 				t.Fatalf("PATH after sourcing = %q, want %q", path, want)
+			}
+			if linked, err := os.Readlink(filepath.Join(deps.StateDirectory, "current")); err != nil || linked != deps.Root {
+				t.Fatalf("$STATE/current = %q, %v; want a link to %s", linked, err, deps.Root)
 			}
 		})
 	}
@@ -118,17 +126,22 @@ func TestTheSessionIsRegisteredUnderTheClaudePID(t *testing.T) {
 // shims need more than the monitor needs the registration
 func TestARegistrationThatCannotBeWrittenFailsWithThePath(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env.sh")
-	deps := sessionstart.Dependencies{Alive: everyProcessLives, EnvFile: envFile, Shims: "/s", StateDirectory: "/dev/null/state", ClaudePID: 7, Now: func() time.Time { return started }}
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "shims"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	deps := sessionstart.Dependencies{Alive: everyProcessLives, EnvFile: envFile, Root: root, StateDirectory: "/dev/null/state", ClaudePID: 7, Now: func() time.Time { return started }}
 	var stdout, stderr bytes.Buffer
 
 	status := sessionstart.Run(strings.NewReader(strings.Replace(sessionStart, "%s", t.TempDir(), 1)), &stdout, &stderr, deps)
 
-	want := "heavy: registering the session in /dev/null/state/sessions: mkdir /dev/null: not a directory\n"
+	want := "heavy: reading the link to the plugin folder of heavy: readlink /dev/null/state/current: not a directory\n" +
+		"heavy: registering the session in /dev/null/state/sessions: mkdir /dev/null: not a directory\n"
 	if status != 1 || stdout.Len() != 0 || stderr.String() != want {
 		t.Fatalf("hook = %d, %q, %q; want 1 and %q", status, stdout.String(), stderr.String(), want)
 	}
 	written, err := os.ReadFile(envFile)
-	wantLines := "case \"$PATH\" in /s:*) ;; *) export PATH=/s:\"$PATH\" ;; esac\nexport HEAVY_SESSION=5968af83-2137-45a0-b3d2-6d3a974c6814\n"
+	wantLines := "case \"$PATH\" in /dev/null/state/current/shims:*) ;; *) export PATH=/dev/null/state/current/shims:\"$PATH\" ;; esac\nexport HEAVY_SESSION=5968af83-2137-45a0-b3d2-6d3a974c6814\n"
 	if err != nil || string(written) != wantLines {
 		t.Fatalf("env file = %q, %v; want %q", written, err, wantLines)
 	}
@@ -155,7 +168,7 @@ func TestSessionStartRemovesTheRegistrationsOfEndedSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps := sessionstart.Dependencies{
-		Alive: func(int) bool { return false }, EnvFile: envFile, Shims: "/s", StateDirectory: state, ClaudePID: 4242,
+		Alive: func(int) bool { return false }, EnvFile: envFile, Root: "/s", StateDirectory: state, ClaudePID: 4242,
 		Now: func() time.Time { return started }, HerdrPlugin: pluginOf(t, t.TempDir(), "1.0.1"),
 	}
 	var stdout, stderr bytes.Buffer

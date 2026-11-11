@@ -130,3 +130,23 @@ func TestJSONHoldsEveryFieldOfAStatusIndented(t *testing.T) {
 		t.Fatalf("JSON =\n%s, %v\nwant\n%s", got, err, want)
 	}
 }
+
+// Below a waiting run the status names what keeps it, in a line of its own, since the reason carries numbers.
+func TestStatusNamesBelowAWaitingRunWhatKeepsIt(t *testing.T) {
+	runs := []protocol.RunStatus{
+		{State: "running", ID: "a1b2c3", Command: "make ci", Directory: "/sites/main", Since: 1_800_000_000, RSSBytes: gibibyte},
+		{State: "waiting", Position: 1, ID: "d4e5f6", Command: "make e2e", Directory: "/sites/other", Since: 1_800_000_060, PredictedBytes: 9 * gibibyte,
+			Waits: "memory: needs 9.0 GiB and 2.0 GiB reserve, 10.0 GiB are free"},
+		{State: "waiting", Position: 2, ID: "g7h8i9", Command: "make test", Directory: "/sites/main", Since: 1_800_000_120, PredictedBytes: gibibyte},
+	}
+
+	got := statusview.Text(runs, "/home/example", 0)
+
+	want := "running    a1b2c3  make ci    /sites/main   1.0 GiB   since " + clock(1_800_000_000) + "\n" +
+		"waiting 1  d4e5f6  make e2e   /sites/other  ~9.0 GiB  since " + clock(1_800_000_060) + "\n" +
+		"  reason: memory: needs 9.0 GiB and 2.0 GiB reserve, 10.0 GiB are free\n" +
+		"waiting 2  g7h8i9  make test  /sites/main   ~1.0 GiB  since " + clock(1_800_000_120) + "\n"
+	if got != want {
+		t.Fatalf("Text =\n%s\nwant\n%s", got, want)
+	}
+}

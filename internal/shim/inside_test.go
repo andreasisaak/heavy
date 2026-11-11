@@ -12,7 +12,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/andreasisaak/heavy/internal/lists"
 	"github.com/andreasisaak/heavy/internal/protocol"
 )
 
@@ -157,22 +156,30 @@ func TestCallInsideARunFailsWhenTheDaemonSpeaksAnotherProtocol(t *testing.T) {
 	}
 }
 
-// A broken personal list fails the call as a broken project list does.
-func TestBrokenPersonalListFailsTheCall(t *testing.T) {
-	f := newFixture(t)
-	path := filepath.Join(f.home, ".config", "heavy", "config.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(`{"projects": []}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+// A personal list written for a newer heavy, or one heavy cannot read, never stops a call: the shim of 1.1.0
+// refused every docker and make call of a session once the list held load.unpredicted_peak_bytes of 1.2.0.
+func TestPersonalListOfANewerHeavyOrABrokenOneLetsTheCallThrough(t *testing.T) {
+	for name, content := range map[string]string{
+		"key of a newer heavy": `{"load": {"max_parallel": 4, "key_of_a_newer_heavy": 1}, "future": {}}`,
+		"broken value":         `{"projects": []}`,
+		"no JSON":              `{"load": `,
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			path := filepath.Join(f.home, ".config", "heavy", "config.json")
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+				t.Fatal(err)
+			}
 
-	got := f.call(t, f.project, f.environment(), "", "make", "lint")
+			got := f.call(t, f.project, f.environment(), "", "make", "lint")
 
-	want := outcome{exitStatus: 1, stderr: "heavy: " + path + ": expected " + lists.PersonalForm + `, got {"projects":[]}` + "\n"}
-	if got != want {
-		t.Fatalf("make lint with a broken personal list = %+v, want %+v", got, want)
+			if want := (outcome{stdout: printed("make", "lint")}); got != want {
+				t.Fatalf("make lint = %+v, want %+v", got, want)
+			}
+		})
 	}
 }
 

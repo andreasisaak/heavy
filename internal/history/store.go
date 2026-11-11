@@ -4,14 +4,15 @@ package history
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -34,9 +35,6 @@ type Record struct {
 	PausedSeconds int64  `json:"paused_seconds"`
 	Restarts      int    `json:"restarts"`
 }
-
-// recordFields counts the fields a record line must have.
-const recordFields = 16
 
 // maxRecord is the longest record line a history file holds, as long as the longest protocol line.
 const maxRecord = 4 << 20
@@ -105,17 +103,23 @@ func readFile(path string) ([]Record, error) {
 	return records, nil
 }
 
-// decode reads one line strictly: every field of a record and no other.
+// decode reads one line: every field of a record must be there. A field this heavy does not know is left out: the
+// daemon of a newer heavy may have written it.
 func decode(line []byte) (Record, error) {
 	var current Record
-	decoder := json.NewDecoder(bytes.NewReader(line))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&current); err != nil {
+	if err := json.Unmarshal(line, &current); err != nil {
 		return Record{}, err
 	}
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(line, &fields); err != nil || len(fields) != recordFields {
-		return Record{}, fmt.Errorf("expected a history record with every field of design G11, got %s", line)
+	if err := json.Unmarshal(line, &fields); err != nil {
+		return Record{}, err
+	}
+	kind := reflect.TypeOf(current)
+	for index := range kind.NumField() {
+		name, _, _ := strings.Cut(kind.Field(index).Tag.Get("json"), ",")
+		if _, found := fields[name]; !found {
+			return Record{}, fmt.Errorf("expected a history record with every field of design G11, got %s", line)
+		}
 	}
 	return current, nil
 }

@@ -121,10 +121,7 @@ func TestLabelUsesThePersonalListOfTheHome(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("writing %s: %v", path, err)
 	}
-	personal, err := lists.LoadPersonal(path)
-	if err != nil {
-		t.Fatalf("LoadPersonal failed: %v", err)
-	}
+	personal := lists.LoadPersonal(path)
 
 	if got := labelOf(t, "make ci", main, personal); got != "ci" {
 		t.Fatalf("label = %q, want ci", got)

@@ -69,6 +69,15 @@ func terminated(command string) string {
 	return command + ";"
 }
 
+// warned adds to a rewrite what the lists hold that heavy does not use, so the session can tell the user.
+func warned(response *answer, warnings []string) *answer {
+	if len(warnings) == 0 || response == nil || response.HookSpecificOutput.AdditionalContext == "" {
+		return response
+	}
+	response.HookSpecificOutput.AdditionalContext += " heavy read a list only in part: " + strings.Join(warnings, "; ") + "."
+	return response
+}
+
 // noting adds the note on the removed filters to a rewrite.
 func noting(response *answer, removed []string) *answer {
 	if len(removed) == 0 || response == nil || response.HookSpecificOutput.AdditionalContext == "" {

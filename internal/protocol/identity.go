@@ -72,6 +72,23 @@ func (i Identity) Newer(daemon Identity, installedStamp string) bool {
 	return i.Stamp != "" && i.Stamp != daemon.Stamp && i.Stamp == installedStamp
 }
 
+// Since reports whether this heavy is of the given version or a later one, so it knows what came with that
+// version. A heavy without a version is one built outside a plugin and counts as the newest; a version that is no
+// dotted number counts as older.
+func (i Identity) Since(version string) bool {
+	mine, valid := versionNumbers(i.Version)
+	theirs, _ := versionNumbers(version)
+	if !valid || i.Version == "" {
+		return valid
+	}
+	for index := 0; index < len(mine) && index < len(theirs); index++ {
+		if mine[index] != theirs[index] {
+			return mine[index] > theirs[index]
+		}
+	}
+	return len(mine) >= len(theirs)
+}
+
 // versionNumbers splits a version into its numbers; an empty version has none and sorts first.
 func versionNumbers(version string) ([]int, bool) {
 	if version == "" {

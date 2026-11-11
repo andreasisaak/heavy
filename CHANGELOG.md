@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-11-11
+
+An update of heavy, and a new key in a list, no longer disturb running sessions. The rollout of 1.2.0 did both: the hooks and shims of 1.1.0 refused every call once the personal list held the new key, and the sessions kept the shims of the old version.
+
+### Added
+
+- `heavy --status` names below a waiting run what keeps it, and the dashboard in its row: the memory it needs with the reserve and what is free, the load, the free memory of the host, swap, `max_parallel`, the machine slots, an exclusive or paused run, the run in the same worktree, or the run ahead that has waited longer than 15 minutes for room. `heavy --status --json` carries it as `waits`.
+
+### Changed
+
+- A list never stops a call. A key heavy does not know, a value it cannot use and a file that is no JSON are left out with a note, and heavy goes on with the defaults: the hook passes or queues the call and names what it left out in the context, the shims run the program, `heavy <command>` and `heavy --status` print the note on stderr, the daemon logs it. Before, the hook denied every Bash call and the shims every `docker`, `make` and package manager call. Only the thresholds of the running daemon still wait for a list it can use: a value it cannot use keeps the last ones.
+- An entry of `.heavy.json` or of the personal list that heavy cannot use is left out alone, and a `red` or `unless` pattern that does not compile likewise; the other entries hold.
+- The messages between the parts of heavy, the session registrations, the run history and the machine configuration are read past fields this version does not know, so a newer heavy can add one.
+- The shims are on `PATH` as `~/.cache/heavy/current/shims`, without the version of the plugin in the path. `current` is a link to the plugin folder of the newest heavy; the session start and the hook of every Bash call of a newer version turn it, an older version never turns it back. A session started with 1.3.0 or later so runs the shims of each later version without a restart. A session started with an older heavy keeps the folder of its version in `PATH` until it is started anew.
+- The daemon hands over to a newer heavy also while runs wait or run. Their commands run on, and each run announces itself to the new daemon with its place in the queue. Before, a daemon with any run served on, so on a busy machine the new version never took over. The daemon still serves on while a run is paused, restarts or has not started its command yet; the next call of the newer heavy then takes over.
+- A run that lost its daemon looks for a new one for a second before it starts one itself, so the daemon of a newer heavy comes first.
+
 ## [1.2.0] - 2026-11-11
 
 ### Added

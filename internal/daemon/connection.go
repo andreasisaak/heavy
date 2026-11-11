@@ -51,7 +51,7 @@ func (s *server) handle(connection net.Conn) {
 		return
 	}
 	client := protocol.Identity{Version: hello.Version, Stamp: hello.Stamp}
-	answer.Handover = !hello.Reader && client.Newer(s.identity, s.installedStamp()) && !s.busy()
+	answer.Handover = !hello.Reader && client.Newer(s.identity, s.installedStamp()) && !s.bound()
 	if !send(s, connection, answer) {
 		return
 	}
@@ -62,11 +62,11 @@ func (s *server) handle(connection net.Conn) {
 		}
 		return
 	}
-	s.messages(connection, reader)
+	s.messages(connection, reader, client)
 }
 
 // messages serves what the first message asks for: a run, a monitor, the status, or a change of a run.
-func (s *server) messages(connection net.Conn, reader *bufio.Reader) {
+func (s *server) messages(connection net.Conn, reader *bufio.Reader, client protocol.Identity) {
 	message, err := protocol.ReadMessage(reader)
 	if errors.Is(err, io.EOF) {
 		return
@@ -77,7 +77,7 @@ func (s *server) messages(connection net.Conn, reader *bufio.Reader) {
 		s.serveRun(connection, reader, *message.Register)
 		return
 	case message.Type == protocol.TypeStatus:
-		s.answerStatus(connection, *message.Status)
+		s.answerStatus(connection, *message.Status, client)
 		return
 	case message.Type == protocol.TypeSubscribe:
 		s.serveSubscriber(connection, reader, *message.Subscribe)

@@ -527,21 +527,6 @@ func register(t *testing.T, state string) (protocol.Message, net.Conn) {
 	return answer, connection
 }
 
-func TestDaemonWithARunKeepsServingANewerHeavy(t *testing.T) {
-	current := startDaemon(t, protocol.Identity{Version: "1.0.0"})
-	answer, _ := register(t, current.state)
-	if answer.Type != protocol.TypeStart {
-		t.Fatalf("registration answered %#v, want a start", answer)
-	}
-
-	hello, _, _ := greet(t, current.state, `{"protocol":1,"version":"1.0.1","stamp":""}`)
-
-	if hello != (protocol.Hello{Protocol: 1, Version: "1.0.0"}) {
-		t.Fatalf("answer to the newer heavy = %#v, want no handover while a run is active", hello)
-	}
-	current.clock.advance(t, time.Second)
-}
-
 func TestIdleTimeCountsFromTheEndOfTheLastRun(t *testing.T) {
 	current := startDaemon(t, protocol.Identity{})
 	_, connection := register(t, current.state)

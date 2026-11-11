@@ -94,7 +94,7 @@ func TestMonitorWithABrokenRegistrationExitsWithItsError(t *testing.T) {
 	status := exitWithin(t, claude.process, 10*time.Second)
 
 	// V29: the session hears why its monitor stopped, since stderr of a plugin monitor reaches nobody
-	want := "heavy: reading the session registration " + path + ": unexpected EOF\n"
+	want := "heavy: reading the session registration " + path + ": unexpected end of JSON input\n"
 	if status != 1 || claude.stderr.String() != want || claude.stdout.String() != "heavy: the session monitor stopped: "+want {
 		t.Fatalf("the monitor ended with exit %d, stdout %q, stderr %q; want exit 1 and %q on both", status, claude.stdout.String(), claude.stderr.String(), want)
 	}

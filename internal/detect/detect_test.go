@@ -321,17 +321,17 @@ func TestShellThatTracesAScriptRunsIt(t *testing.T) {
 	}
 }
 
-func TestBrokenListFailsTheDetection(t *testing.T) {
+func TestBrokenListIsReadAsFarAsItGoesAndNoted(t *testing.T) {
 	main := checkout(t, filepath.Join(t.TempDir(), "main"))
-	if err := os.WriteFile(filepath.Join(main, ".heavy.json"), []byte(`{"commands": [1]}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(main, ".heavy.json"), []byte(`{"commands": [1, "make ci"]}`), 0o644); err != nil {
 		t.Fatalf("writing the list: %v", err)
 	}
 	detector := detect.NewDetector(noPersonal(), nil, nil)
 
-	_, err := detector.Heavy(shell.FromArgv([]string{"make", "ci"}), main)
+	found, err := detector.Heavy(shell.FromArgv([]string{"make", "ci"}), main)
 
-	want := "heavy: " + filepath.Join(main, ".heavy.json") + ": expected " + lists.ProjectListForm + `, got {"commands":[1]}`
-	if err == nil || err.Error() != want {
-		t.Fatalf("Heavy error = %v, want %q", err, want)
+	want := []string{"heavy: " + filepath.Join(main, ".heavy.json") + `: cannot use "commands[0]": 1, expected a command as in .heavy.json; heavy leaves this command out`}
+	if err != nil || len(found) != 1 || found[0].Text != "make ci" || !reflect.DeepEqual(detector.Warnings(), want) {
+		t.Fatalf("Heavy = %+v, %v with the warnings %q; want make ci found and %q", found, err, detector.Warnings(), want)
 	}
 }

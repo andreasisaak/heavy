@@ -234,12 +234,18 @@ start() {
 }
 
 # environment writes the lines of the SessionStart hook to CLAUDE_ENV_FILE: the shims first on PATH and HEAVY_SESSION
-# from the session_id of the hook input. Without either it writes nothing; the hook says why after the build.
+# from the session_id of the hook input. Without either it writes nothing; the hook says why after the build. The
+# shims lie behind the link $STATE/current, a path without the version of the plugin, so a session keeps it over an
+# update. A missing link names this plugin folder; one that is there stays for the hook, which compares the versions.
 environment() {
 	[ -n "${CLAUDE_ENV_FILE-}" ] || return 0
 	session=$(printf '%s' "$2" | sed -n 's/.*"session_id"[[:space:]]*:[[:space:]]*"\([A-Za-z0-9_-]*\)".*/\1/p' | head -n 1)
 	[ -n "$session" ] || return 0
-	shims=$(quote "$1/shims")
+	state=${HEAVY_STATE_DIRECTORY:-$HOME/.cache/heavy}
+	if [ ! -L "$state/current" ]; then
+		mkdir -p "$state" && ln -s "$1" "$state/current"
+	fi
+	shims=$(quote "$state/current/shims")
 	printf 'case "$PATH" in %s:*) ;; *) export PATH=%s:"$PATH" ;; esac\nexport HEAVY_SESSION=%s\n' "$shims" "$shims" "$session" >>"$CLAUDE_ENV_FILE"
 }
 

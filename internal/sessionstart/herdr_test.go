@@ -31,7 +31,7 @@ func pluginOf(t *testing.T, data, version string) herdr.Plugin {
 func startWith(t *testing.T, plugin herdr.Plugin) (int, string, string) {
 	t.Helper()
 	deps := sessionstart.Dependencies{
-		Alive: everyProcessLives, EnvFile: filepath.Join(t.TempDir(), "env.sh"), Shims: "/plugins/heavy/shims", StateDirectory: testkit.StateDir(t), ClaudePID: 4242,
+		Alive: everyProcessLives, EnvFile: filepath.Join(t.TempDir(), "env.sh"), Root: "/plugins/heavy", StateDirectory: testkit.StateDir(t), ClaudePID: 4242,
 		Now: func() time.Time { return started }, HerdrPlugin: plugin,
 	}
 	var stdout, stderr bytes.Buffer

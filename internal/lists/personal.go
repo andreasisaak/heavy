@@ -1,6 +1,7 @@
 package lists
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -8,28 +9,21 @@ import (
 	"strings"
 )
 
-// PersonalForm is the shape ~/.config/heavy/config.json must have, as error messages name it.
-const PersonalForm = `{"projects": {"<main checkout>": {"enabled": true, "commands": ["make ci"]}}, "load": {"max_parallel": 3}} ` +
-	`with every key optional, each command a string or an object as in .heavy.json, and "load" with "max_parallel" (from 1), ` +
-	`"reserve_bytes", "vm_pressure_bytes", "vm_recovered_bytes", "swap_bytes_per_2s", "unpredicted_peak_bytes" (whole bytes from 0), ` +
-	`"host_pressure_percent", "host_recovered_percent" (0 to 100) and "load_per_core" (from 0)`
-
 // Switch is the personal entry of one main checkout: whether its .heavy.json counts, and commands added to it.
 type Switch struct {
 	Enabled  bool
 	Commands []Entry
 }
 
-// Personal is the personal list: switches keyed by resolved main checkout, and the load thresholds.
+// Personal is the personal list: switches keyed by resolved main checkout, and the load thresholds. Warnings name
+// what heavy left out of the file; Broken says that a value or the file itself could not be used, which a key
+// heavy does not know alone does not.
 type Personal struct {
 	Projects map[string]Switch
 	Load     Load
+	Warnings []string
+	Broken   bool
 }
-
-var (
-	personalFields = map[string]bool{"projects": true, "load": true}
-	switchFields   = map[string]bool{"enabled": true, "commands": true}
-)
 
 // PersonalPath is the path of the personal list in the home directory.
 func PersonalPath() (string, error) {
@@ -40,60 +34,65 @@ func PersonalPath() (string, error) {
 	return filepath.Join(home, ".config", "heavy", "config.json"), nil
 }
 
-// LoadPersonal reads the personal list; no file switches nothing and keeps the default thresholds.
-func LoadPersonal(path string) (Personal, error) {
+// LoadPersonal reads the personal list as far as it can be read; no file switches nothing and keeps the default
+// thresholds. The list never fails a call: what heavy does not know or cannot use is in Warnings.
+func LoadPersonal(path string) Personal {
 	personal := Personal{Projects: map[string]Switch{}, Load: DefaultLoad()}
 	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return personal, nil
+		return personal
 	}
-	document, err := readJSON(path, PersonalForm)
-	if err != nil {
-		return Personal{}, err
-	}
-	fields, isObject := decodeObject(document.data)
-	if !isObject || !onlyKeys(fields, personalFields) {
-		return Personal{}, document.shapeError()
-	}
-	if raw, found := fields["load"]; found {
-		load, valid := decodeLoad(raw)
-		if !valid {
-			return Personal{}, document.shapeError()
-		}
-		personal.Load = load
-	}
-	if raw, found := fields["projects"]; found {
-		projects, isObject := decodeObject(raw)
-		if !isObject {
-			return Personal{}, document.shapeError()
-		}
-		for checkout, value := range projects {
-			current, err := decodeSwitch(document, value)
-			if err != nil {
-				return Personal{}, err
-			}
-			personal.Projects[realPath(expandHome(checkout))] = current
+	n := &notes{path: path}
+	fields, found := readObject(n)
+	for _, key := range sortedKeys(fields) {
+		switch key {
+		case "load":
+			personal.Load = decodeLoad(fields[key], n)
+		case "projects":
+			decodeProjects(fields[key], personal.Projects, n)
+		default:
+			n.unknown(key)
 		}
 	}
-	return personal, nil
+	personal.Warnings, personal.Broken = n.warnings, n.broken || !found
+	return personal
 }
 
-func decodeSwitch(document document, raw []byte) (Switch, error) {
+// decodeProjects reads the switches of the "projects" section into switches, keyed by resolved main checkout.
+func decodeProjects(raw json.RawMessage, switches map[string]Switch, n *notes) {
+	projects, isObject := decodeObject(raw)
+	if !isObject {
+		n.unusable("projects", raw, "an object", "heavy reads no project from it")
+		return
+	}
+	for _, checkout := range sortedKeys(projects) {
+		if current, valid := decodeSwitch(projects[checkout], "projects."+checkout, n); valid {
+			switches[realPath(expandHome(checkout))] = current
+		}
+	}
+}
+
+// decodeSwitch reads the entry of one project; one heavy cannot use is noted and left out.
+func decodeSwitch(raw json.RawMessage, where string, n *notes) (Switch, bool) {
 	fields, isObject := decodeObject(raw)
-	if !isObject || !onlyKeys(fields, switchFields) {
-		return Switch{}, document.shapeError()
+	if !isObject {
+		n.unusable(where, raw, "an object", "heavy leaves this project out")
+		return Switch{}, false
 	}
 	current := Switch{Enabled: true}
 	if value, found := fields["enabled"]; found && !decodeBool(value, &current.Enabled) {
-		return Switch{}, document.shapeError()
+		n.unusable(where+".enabled", value, "true or false", "heavy leaves this project out")
+		return Switch{}, false
 	}
-	if value, found := fields["commands"]; found {
-		commands, err := decodeEntries(document, value)
-		if err != nil {
-			return Switch{}, err
+	for _, key := range sortedKeys(fields) {
+		switch key {
+		case "enabled":
+		case "commands":
+			current.Commands = decodeEntries(fields[key], where+".commands", n)
+		default:
+			n.unknown(where + "." + key)
 		}
-		current.Commands = commands
 	}
-	return current, nil
+	return current, true
 }
 
 // expandHome replaces a leading ~ with the home directory, as os.path.expanduser did.

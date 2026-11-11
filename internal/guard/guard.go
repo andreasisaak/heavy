@@ -24,8 +24,11 @@
 // queue, through heavy as a whole, unless other work stands before them: then each queues on its own. A background heavy call in a
 // form that hooks keeping background output visible rewrite is denied, with the tee form as the way out.
 //
-// Errors of heavy's own (a broken list, a queue that cannot be read, hook input the guard cannot read) deny the
-// call and name the file, the expected form and what was found (design G15). A call that is no valid Bash passes
+// Errors of heavy's own (a queue that cannot be read, hook input the guard cannot read) deny the call and name
+// what was expected and what was found (design G15). A list is no such error: heavy reads the personal list and a
+// .heavy.json as far as it can, since a newer heavy may have written them, and a list that stopped every call
+// would stop every session of an older heavy. What a list holds that heavy does not use goes into the context of a
+// queued call and into the log. A call that is no valid Bash passes
 // unchanged: Bash reports the error and runs none of it.
 //
 // /reload-plugins starts no SessionStart, so the guard keeps the herdr plugin current as well: it reads the version
@@ -104,14 +107,15 @@ func respond(stdin io.Reader, deps Dependencies) (*answer, error) {
 		deps.Log.Warn("the call is no valid Bash, so the guard lets it run for Bash to report", "error", err.Error())
 		return nil, nil
 	}
-	personal, err := lists.LoadPersonal(deps.PersonalList)
-	if err != nil {
-		return nil, err
-	}
+	personal := lists.LoadPersonal(deps.PersonalList)
 	detector := detect.NewDetector(personal, deps.Container, nil)
 	found, err := detector.Heavy(current.script, input.Cwd)
 	if err != nil {
 		return nil, err
+	}
+	warnings := append(personal.Warnings, detector.Warnings()...)
+	for _, warning := range warnings {
+		deps.Log.Warn("a list holds something heavy does not use", "warning", warning)
 	}
 	runs := heavyRuns(current.script)
 	if len(found) == 0 && len(runs) == 0 {
@@ -134,7 +138,7 @@ func respond(stdin io.Reader, deps Dependencies) (*answer, error) {
 	if err != nil {
 		return nil, err
 	}
-	return noting(response, removed), nil
+	return warned(noting(response, removed), warnings), nil
 }
 
 // heavyAt reports whether the text of the call from start to end holds a heavy command or a heavy run.

@@ -16,7 +16,8 @@ import (
 const (
 	// monitorFindFor is how long the monitor looks for the registration the SessionStart hook writes (design G9).
 	monitorFindFor = 30 * time.Second
-	// monitorRetryPause is the pause between two searches and before the monitor subscribes again.
+	// monitorRetryPause is the pause between two searches and before the monitor subscribes again; in it a newer heavy
+	// that took the daemon over starts its own, so the monitor brings back no daemon of its older version.
 	monitorRetryPause = time.Second
 	// monitorOutageNotice is how long the daemon may stay out of reach before the session hears of it.
 	monitorOutageNotice = time.Minute

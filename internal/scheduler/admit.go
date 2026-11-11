@@ -56,17 +56,7 @@ func admit(state State, m Measurements, cfg Config, now time.Time) (Action, bool
 // personal list names it. Beside the runs of other users alone it may start without one, since waiting for a
 // machine without runs could last forever, and then needs the reserve.
 func fits(run Run, active []Run, m Measurements, cfg Config) bool {
-	if len(active) == 0 && m.OtherActive == 0 {
-		return true
-	}
-	expected, known := expectedPeak(run, cfg)
-	if run.Exclusive || (len(active) > 0 && !known) {
-		return false
-	}
-	return available(m)-claimed(active, cfg)-expected >= cfg.Load.ReserveBytes &&
-		m.HostFreePercent >= cfg.Load.HostRecoveredPercent &&
-		m.Load1/float64(m.Cores) < cfg.Load.LoadPerCore &&
-		m.SwapOutBytesPer2s < cfg.Load.SwapBytesPer2s
+	return len(shortfalls(run, active, m, cfg)) == 0
 }
 
 // expectedPeak is the peak memory to expect of a run: that of its history, else the estimate of the personal list

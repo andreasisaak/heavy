@@ -5,37 +5,47 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/andreasisaak/heavy/internal/lists"
 )
 
-// test_heavy_guard.py:544; 0.6 raised a ValueError and let the call run, Go denies it (design G15).
-func TestBrokenProjectListIsDeniedWithPathAndExpectedForm(t *testing.T) {
-	for _, current := range []struct{ content, compact string }{
-		{`{"commands": "make ci"}`, `{"commands":"make ci"}`},
-		{`{"commands": [1]}`, `{"commands":[1]}`},
-	} {
-		t.Run(current.content, func(t *testing.T) {
-			_, worktree := checkouts(t)
-			path := filepath.Join(worktree, ".heavy.json")
-			if err := os.WriteFile(path, []byte(current.content), 0o644); err != nil {
-				t.Fatal(err)
-			}
+// A list heavy cannot read whole never denies a call. Up to 1.2.0 the guard denied every Bash call of a session
+// whose list held something it did not know, such as load.unpredicted_peak_bytes of 1.2.0 for the guard of 1.1.0.
+func TestBrokenProjectListLetsTheCallPassAndLogsWhatItLeftOut(t *testing.T) {
+	_, worktree := checkouts(t)
+	path := filepath.Join(worktree, ".heavy.json")
+	if err := os.WriteFile(path, []byte(`{"commands": "make ci"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	current := newWorld(t)
 
-			got := guardOf(t, "make ci", worktree, false)
+	got := current.run(t, bash("make ci", worktree, false))
 
-			check(t, "answer", got, denial("heavy: "+path+": expected "+lists.ProjectListForm+", got "+current.compact))
+	check(t, "answer", got, nil)
+	check(t, "log", current.log.String(), `{"level":"WARN","msg":"a list holds something heavy does not use","warning":"heavy: `+path+
+		`: cannot use \"commands\": \"make ci\", expected a list; heavy reads no command from it"}`+"\n")
+}
+
+func TestPersonalListHeavyCannotReadLetsEveryCallPass(t *testing.T) {
+	_, worktree := listed(t)
+	for name, content := range map[string]string{"broken value": `{"projects": []}`, "no JSON": `{"load": `, "key of a newer heavy": `{"load": {"key_of_a_newer_heavy": 1}}`} {
+		t.Run(name, func(t *testing.T) {
+			current := newWorld(t).withPersonal(t, content)
+
+			got := current.run(t, bash("git status", worktree, false))
+
+			check(t, "answer", got, nil)
 		})
 	}
 }
 
-func TestBrokenPersonalListIsDenied(t *testing.T) {
+// The guard queues a heavy call as ever and tells the session what the list holds that this heavy does not use.
+func TestPersonalListOfANewerHeavyStillQueuesAndSaysWhatItLeftOut(t *testing.T) {
 	_, worktree := listed(t)
-	current := newWorld(t).withPersonal(t, `{"projects": []}`)
+	current := newWorld(t).withPersonal(t, `{"load": {"max_parallel": 4, "key_of_a_newer_heavy": 1}}`)
 
-	got := current.run(t, bash("git status", worktree, false))
+	got := current.run(t, bash("make ci", worktree, true))
 
-	check(t, "answer", got, denial("heavy: "+current.personal+": expected "+lists.PersonalForm+`, got {"projects":[]}`))
+	note := " heavy read a list only in part: heavy: " + current.personal + `: unknown key "load.key_of_a_newer_heavy", ignored; a newer heavy may know it.`
+	check(t, "answer", got, rewrite(rewritten(fakeHeavy+" make ci"), contextOf("`make ci`", inFront, free, fakeHeavy+" make ci")+note))
 }
 
 // plan 4.1: Bash itself reports a call that is no valid Bash.

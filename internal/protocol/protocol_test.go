@@ -36,12 +36,23 @@ func TestHelloOfAnotherProtocolStillNamesItsNumber(t *testing.T) {
 	}
 }
 
-func TestHelloWithUnknownFieldOfThisProtocolIsAnError(t *testing.T) {
-	_, err := protocol.ReadHello(bufio.NewReader(strings.NewReader(`{"protocol":1,"version":"1.0.0","peer":"x"}` + "\n")))
+// A newer heavy of the same protocol may send fields this one does not know; it reads the rest. A hook or a shim
+// of an older version that failed on such a field would stop the calls of its session.
+func TestHelloWithAFieldOfANewerHeavyReadsTheRest(t *testing.T) {
+	got, err := protocol.ReadHello(bufio.NewReader(strings.NewReader(`{"protocol":1,"version":"1.0.0","stamp":"s","peer":"x"}` + "\n")))
 
-	want := `heavy: expected a hello of protocol 1, got {"protocol":1,"version":"1.0.0","peer":"x"}: json: unknown field "peer"`
-	if err == nil || err.Error() != want {
-		t.Fatalf("ReadHello error = %v, want %q", err, want)
+	if want := (protocol.Hello{Protocol: 1, Version: "1.0.0", Stamp: "s"}); err != nil || got != want {
+		t.Fatalf("ReadHello = %#v, %v; want %#v", got, err, want)
+	}
+}
+
+func TestMessageWithAFieldOfANewerHeavyReadsTheRest(t *testing.T) {
+	line := `{"type":"status","status":{"runs":[{"state":"waiting","id":"r1","waits_for":"memory","since":5}],"vm":"","monitors":[],"tomorrow":1},"extra":true}`
+
+	got, err := protocol.ReadMessage(bufio.NewReader(strings.NewReader(line + "\n")))
+
+	if err != nil || got.Type != protocol.TypeStatus || got.Status == nil || len(got.Status.Runs) != 1 || got.Status.Runs[0].ID != "r1" || got.Status.Runs[0].Since != 5 {
+		t.Fatalf("ReadMessage = %#v, %v; want the status with run r1", got, err)
 	}
 }
 
@@ -64,7 +75,7 @@ func TestMessageWhosePayloadDoesNotFitItsTypeIsAnError(t *testing.T) {
 		`{"type":"forward"}`: `heavy: expected a message whose payload fits its type, got {"type":"forward"}`,
 		`{"type":"forward","forward":{"position":2},"print":{"line":"x"}}`: `heavy: expected a message whose payload fits its type, got {"type":"forward","forward":{"position":2},"print":{"line":"x"}}`,
 		`{"type":"jump"}`: `heavy: expected a message whose payload fits its type, got {"type":"jump"}`,
-		`{"type":"forward","forward":{"position":2,"x":1}}`: `heavy: expected a message of protocol 1, got {"type":"forward","forward":{"position":2,"x":1}}: json: unknown field "x"`,
+		`{"type":"forward","forward":{"position":"2"}}`: `heavy: expected a message of protocol 1, got {"type":"forward","forward":{"position":"2"}}: json: cannot unmarshal string into Go struct field Message.forward.position of type int`,
 	}
 	for line, want := range cases {
 		_, err := protocol.ReadMessage(bufio.NewReader(strings.NewReader(line + "\n")))
@@ -160,5 +171,15 @@ func TestLineOverTheLimitIsAnError(t *testing.T) {
 	want := "heavy: a line from the other side is longer than 4194304 bytes"
 	if err == nil || err.Error() != want {
 		t.Fatalf("ReadMessage error = %v, want %q", err, want)
+	}
+}
+
+// A daemon sends a field that came with a version only to a heavy of that version or a later one. A heavy without
+// a version is one built outside a plugin, as in the tests, and as new as the daemon.
+func TestAnIdentityKnowsWhatCameWithItsVersionOrBefore(t *testing.T) {
+	for version, want := range map[string]bool{"1.3.0": true, "1.3.1": true, "1.10.0": true, "2.0": true, "": true, "1.2.9": false, "1.2": false, "0.9.0": false, "1.x": false} {
+		if got := (protocol.Identity{Version: version}).Since("1.3.0"); got != want {
+			t.Errorf("heavy %q since 1.3.0 = %v, want %v", version, got, want)
+		}
 	}
 }

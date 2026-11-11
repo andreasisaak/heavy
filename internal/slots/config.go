@@ -46,8 +46,8 @@ func Load(path string) (config Config, found bool, err error) {
 		MaxParallel *int    `json:"max_parallel"`
 		Slots       *string `json:"slots"`
 	}
+	// A key this heavy does not know is left out: a newer heavy on the same machine may know it.
 	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
 	shape := fmt.Errorf("heavy: %s: expected %s, got %s", path, form, bytes.TrimSpace(content))
 	if err := decoder.Decode(&document); err != nil {
 		return Config{}, false, shape

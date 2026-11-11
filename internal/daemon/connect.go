@@ -26,6 +26,10 @@ type ConnectOptions struct {
 	StateDirectory string
 	Binary         string
 	Identity       protocol.Identity
+	// StartAfter is how long Connect only looks for a daemon before it starts one itself. A run that lost its daemon
+	// waits so: when a newer heavy took the daemon over, the daemon of that heavy comes first, and the run does not
+	// bring back the daemon of its own, older version.
+	StartAfter time.Duration
 }
 
 // Connection is an open connection to the daemon, after both hellos.
@@ -67,7 +71,8 @@ func Connect(options ConnectOptions) (*Connection, error) {
 		return nil, fmt.Errorf("heavy: creating the state directory %s: %w", options.StateDirectory, err)
 	}
 	lock := filepath.Join(options.StateDirectory, "daemon.lock")
-	deadline := time.Now().Add(connectTimeout)
+	deadline := time.Now().Add(options.StartAfter + connectTimeout)
+	began := time.Now()
 	var lastStart time.Time
 	for {
 		if raw, err := net.Dial("unix", socket); err == nil {
@@ -88,7 +93,7 @@ func Connect(options ConnectOptions) (*Connection, error) {
 		if err != nil {
 			return nil, err
 		}
-		if free && time.Since(lastStart) >= restartPause {
+		if free && time.Since(began) >= options.StartAfter && time.Since(lastStart) >= restartPause {
 			if err := startDaemon(options); err != nil {
 				return nil, err
 			}

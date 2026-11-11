@@ -1,5 +1,5 @@
 // Package sessionstart is `heavy --hook session-start` (FR-35): it puts the shims in front of PATH and exports the
-// session id through CLAUDE_ENV_FILE, registers the session for its monitor (design G9) and generates the herdr
+// session id through CLAUDE_ENV_FILE, points the link to the shims at this heavy, registers the session for its monitor (design G9) and generates the herdr
 // plugin of this heavy in CLAUDE_PLUGIN_DATA (design G12). Its stdout becomes context for Claude, so it writes
 // nothing there.
 package sessionstart
@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/andreasisaak/heavy/internal/current"
 	"github.com/andreasisaak/heavy/internal/herdr"
 	"github.com/andreasisaak/heavy/internal/lists"
 	"github.com/andreasisaak/heavy/internal/sessions"
@@ -22,8 +23,9 @@ import (
 type Dependencies struct {
 	// EnvFile is CLAUDE_ENV_FILE, "" when Claude Code did not set it.
 	EnvFile string
-	// Shims is the shims folder of the plugin.
-	Shims          string
+	// Root is the plugin folder of this heavy; the shims on PATH lie behind the link $STATE/current, which the hook
+	// points at Root (internal/current).
+	Root           string
 	StateDirectory string
 	// ClaudePID is the PID of Claude Code, named by hooks/build.sh (HEAVY_CLAUDE_PID).
 	ClaudePID int
@@ -56,8 +58,16 @@ func Run(stdin io.Reader, stdout, stderr io.Writer, deps Dependencies) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	// A link that cannot be set leaves the shims of the heavy it names; the session is registered all the same.
+	pointed := current.Point(deps.StateDirectory, deps.Root, true)
+	if pointed != nil {
+		fmt.Fprintln(stderr, pointed)
+	}
 	if err := register(start, deps); err != nil {
 		fmt.Fprintln(stderr, err)
+		return 1
+	}
+	if pointed != nil {
 		return 1
 	}
 	// The own registration stays whatever Alive says: its Claude Code started this hook.
@@ -84,7 +94,7 @@ func writeEnvironment(start input, deps Dependencies, stderr io.Writer) error {
 		fmt.Fprintln(stderr, "heavy: CLAUDE_ENV_FILE is not set, so the shims stay off PATH and only the PreToolUse hook queues heavy calls")
 		return nil
 	}
-	shims := shell.Quote(deps.Shims)
+	shims := shell.Quote(current.Shims(deps.StateDirectory))
 	lines := fmt.Sprintf("case \"$PATH\" in %s:*) ;; *) export PATH=%s:\"$PATH\" ;; esac\nexport HEAVY_SESSION=%s\n", shims, shims, shell.Quote(start.SessionID))
 	file, err := os.OpenFile(deps.EnvFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {

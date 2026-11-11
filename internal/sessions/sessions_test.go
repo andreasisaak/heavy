@@ -39,7 +39,8 @@ func TestMissingRegistrationIsAnErrorWithItsPath(t *testing.T) {
 	}
 }
 
-func TestRegistrationWithAnUnknownFieldIsAnError(t *testing.T) {
+// The hook of a newer heavy may write fields the monitor of an older one does not know; it reads the rest.
+func TestRegistrationWithAFieldOfANewerHeavyReadsTheRest(t *testing.T) {
 	state := testkit.StateDir(t)
 	path := filepath.Join(state, "sessions", "8.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -49,11 +50,10 @@ func TestRegistrationWithAnUnknownFieldIsAnError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := sessions.Read(state, 8)
+	got, err := sessions.Read(state, 8)
 
-	want := "heavy: reading the session registration " + path + `: json: unknown field "extra"`
-	if err == nil || err.Error() != want {
-		t.Fatalf("Read = %v, want %q", err, want)
+	if err != nil || got.SessionID != "s" || got.Time != 1 {
+		t.Fatalf("Read = %#v, %v; want the session s of time 1", got, err)
 	}
 }
 

@@ -113,7 +113,7 @@ func TestMonitorWithABrokenRegistrationEndsWithTheReadError(t *testing.T) {
 
 	err := start(t, fixture.deps).result(t)
 
-	want := "heavy: reading the session registration " + path + ": unexpected EOF"
+	want := "heavy: reading the session registration " + path + ": unexpected end of JSON input"
 	if err == nil || err.Error() != want {
 		t.Fatalf("Run = %v, want %q", err, want)
 	}

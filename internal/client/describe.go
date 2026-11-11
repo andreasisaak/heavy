@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,10 +22,7 @@ func describe(options Options) (protocol.Register, []*regexp.Regexp, error) {
 	if err != nil {
 		return protocol.Register{}, nil, err
 	}
-	personal, err := lists.LoadPersonal(path)
-	if err != nil {
-		return protocol.Register{}, nil, err
-	}
+	personal := lists.LoadPersonal(path)
 	logger := slog.New(slog.NewTextHandler(options.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 	detector := detect.NewDetector(personal, detect.ContainerLookup(os.Getenv("PATH"), logger), environment())
 	name, err := label.Label(options.Argv, options.Directory, detector)
@@ -34,6 +32,9 @@ func describe(options Options) (protocol.Register, []*regexp.Regexp, error) {
 	found, err := detector.Heavy(shell.FromArgv(options.Argv), options.Directory)
 	if err != nil {
 		return protocol.Register{}, nil, err
+	}
+	for _, warning := range append(personal.Warnings, detector.Warnings()...) {
+		fmt.Fprintln(options.Stderr, warning)
 	}
 	var entry lists.Entry
 	if len(found) > 0 && found[0].Index == 0 && found[0].Entry != nil {

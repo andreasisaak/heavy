@@ -13,8 +13,9 @@ import (
 // commandWidth is the longest command a status line shows; a longer one is cut with an ellipsis.
 const commandWidth = 60
 
-// Text prints one aligned line per run: state, id, command, directory (under home as ~), memory and time. Without
-// an active run the first line says the queue is free. estimate is unpredicted_peak_bytes of the personal list, the
+// Text prints one aligned line per run: state, id, command, directory (under home as ~), memory and time, and
+// below a waiting run what keeps it from starting, when the daemon names it. Without an active run the first line
+// says the queue is free. estimate is unpredicted_peak_bytes of the personal list, the
 // peak heavy plans a run without history with, 0 for none.
 func Text(runs []protocol.RunStatus, home string, estimate int64) string {
 	var lines strings.Builder
@@ -29,7 +30,12 @@ func Text(runs []protocol.RunStatus, home string, estimate int64) string {
 	for _, run := range runs {
 		rows = append(rows, []string{state(run), run.ID, cut(run.Command), homeRelative(run.Directory, home), memory(run, estimate), moment(run)})
 	}
-	lines.WriteString(align(rows))
+	for index, line := range strings.SplitAfter(align(rows), "\n") {
+		lines.WriteString(line)
+		if index < len(runs) && runs[index].Waits != "" {
+			lines.WriteString("  reason: " + runs[index].Waits + "\n")
+		}
+	}
 	return lines.String()
 }
 

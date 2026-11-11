@@ -89,7 +89,7 @@ func (s *session) report(exitStatus int) bool {
 		s.link.Close()
 		return false
 	}
-	if err := s.connect(); err != nil {
+	if err := s.connect(0); err != nil {
 		fmt.Fprintf(s.options.Stderr, "heavy: the daemon did not get the end of the run: %v\n", err)
 		return false
 	}
@@ -123,12 +123,16 @@ func (s *session) interrupted(caught syscall.Signal) int {
 	return 128 + int(caught)
 }
 
+// startAfterLoss is how long a run that lost its daemon leaves the start of a new one to others: a newer heavy
+// that took the daemon over starts its own within some ten milliseconds.
+const startAfterLoss = time.Second
+
 // reconnect announces the run to a new daemon after the old one went away, while the command keeps running.
 func (s *session) reconnect() (int, bool) {
 	s.link.Close()
 	fmt.Fprintf(s.options.Stderr, "heavy: lost the daemon at %s, announcing the run to a new one\n", time.Now().Format("15:04:05"))
 	for {
-		err := s.connect()
+		err := s.connect(startAfterLoss)
 		if err == nil {
 			return 0, false
 		}

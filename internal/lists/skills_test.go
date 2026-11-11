@@ -34,13 +34,14 @@ func TestExampleListsOfTheSkillsLoad(t *testing.T) {
 			}
 			_, personal := keys["projects"]
 			_, load := keys["load"]
+			var warnings []string
 			if personal || load {
-				_, err = lists.LoadPersonal(path)
+				warnings = lists.LoadPersonal(path).Warnings
 			} else {
-				_, err = lists.LoadProjectList(path)
+				_, warnings = lists.LoadProjectList(path)
 			}
-			if err != nil {
-				t.Errorf("%s block %d does not load: %v", skill, index+1, err)
+			if len(warnings) != 0 {
+				t.Errorf("%s block %d does not load whole: %q", skill, index+1, warnings)
 			}
 		}
 	}

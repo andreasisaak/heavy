@@ -83,10 +83,11 @@ In Claude Code:
    $ heavy --status
    running    5a15daabd3d7  make ci    ~/sites/shop-feature  3.1 GiB  since 18:08
    waiting 1  40eaa72d5a13  make test  ~/sites/shop          ~2.0 GiB  since 18:09
+     reason: load: 15.2 on 18 cores, starts below 14.4
    failed 2   c580acbda119  make ci    ~/sites/shop          -        ended 18:07
    ```
 
-   A waiting run shows its expected peak memory with `~`, and `~?` when its command has no record yet. A last line `VM: not measured (…)` says that the daemon cannot reach the Docker VM, for example while OrbStack sleeps.
+   A waiting run shows its expected peak memory with `~`, and `~?` when its command has no record yet. The line below it names what keeps it: the memory it needs and what is free, the load, `max_parallel`, the slots of the machine, or the run that is active in the same worktree. A last line `VM: not measured (…)` says that the daemon cannot reach the Docker VM, for example while OrbStack sleeps.
 
 4. Watch the machine live with `heavy --dashboard`: cores, free memory of the VM and the Mac, load, each run with its memory and cores, the free memory of the last 30 minutes, the biggest containers outside the runs and the last results.
 
@@ -154,6 +155,8 @@ List what the catalogue cannot see: make targets, CI scripts, and compose servic
 | `swap_bytes_per_2s` | 4 MiB | a new run starts beside others only below this swap-out rate |
 | `unpredicted_peak_bytes` | none | the peak memory to expect of a command without any record; with it such a run may start beside others, without it only alone |
 
+A key heavy does not know, or a value it cannot use, never stops a call: heavy leaves it out, goes on with the default, and says so in the context of a queued call, on stderr of `heavy <command>` and `heavy --status`, and in `~/.cache/heavy/daemon.log`. So the sessions that still run an older heavy keep working when you set a key a newer one brought. The same holds for `.heavy.json`: an entry heavy cannot use is left out alone.
+
 On Linux "the VM" in these keys is the machine: its available memory (`MemAvailable`), and at most what the cgroup limits of your user leave (`memory.high` and `memory.max` less the memory in use, which is `memory.current` without the file cache, as systemd sets them with `MemoryHigh` and `MemoryMax` on a user slice).
 
 ### Machine configuration
@@ -208,9 +211,17 @@ The end of a run reaches the session as the end of its background task.
 
 ### Shims
 
-The SessionStart hook puts `shims/` in front of `PATH` for every Bash call of the session. The shims stand in for `docker`, `make`, `gmake`, `pnpm`, `pnpx`, `npm`, `npx`, `yarn`, `bun`, `bunx`, `uv`, `uvx` and `composer`, only in Claude Code sessions. A heavy call that the hook missed, because a variable, a script or a make target hid it, waits in the queue there. A light call goes straight to the real program, in about 13 ms for `make --version`.
+The SessionStart hook puts the shims in front of `PATH` for every Bash call of the session, as `~/.cache/heavy/current/shims`. `current` is a link to the plugin folder of the newest heavy on the machine; the hooks of a newer version turn it to their own folder, so a session keeps its `PATH` over an update and runs the new shims from the first hook of the new version on. The shims stand in for `docker`, `make`, `gmake`, `pnpm`, `pnpx`, `npm`, `npx`, `yarn`, `bun`, `bunx`, `uv`, `uvx` and `composer`, only in Claude Code sessions. A heavy call that the hook missed, because a variable, a script or a make target hid it, waits in the queue there. A light call goes straight to the real program, in about 13 ms for `make --version`.
 
 Inside a run, `docker exec`, `docker run` and `docker compose exec|run` get `-e HEAVY_RUN=<id> -e HEAVY_CPUS=<n>`, so heavy finds, measures and pauses the processes in the containers.
+
+### Updates
+
+An update of heavy disturbs no running session and no run:
+
+- The lists and the messages between the parts of heavy are read past what a version does not know, so an older and a newer heavy work side by side on one machine.
+- The shims lie behind a path without a version, see [Shims](#shims).
+- The daemon of the older version hands over as soon as the first heavy of the newer version queues a run, also while runs wait or run. The commands are children of their `heavy`, not of the daemon, and run on; each `heavy` prints `heavy: lost the daemon at …, announcing the run to a new one` and keeps its place in the queue. Only while a run is paused, or in the moment between its start and the first process of its command, the old daemon serves on, and the next call of the newer heavy takes over.
 
 ### Catalogue
 
@@ -274,7 +285,7 @@ The first session after an install or an update downloads heavy from the release
 
 ### Commands still go through the old version after an update
 
-A resumed session keeps the `PATH` of the version it started with. Start a new session instead of `claude --resume`.
+A session that started with heavy 1.3.0 or later keeps up on its own, see [Updates](#updates). A session that started with an older heavy has the folder of that version in its `PATH` and keeps it, also over `claude --resume`: start a new session once.
 
 ### The herdr sidebar shows no heavy rows
 
@@ -286,7 +297,7 @@ The machine configuration names a folder that does not exist. The run started wi
 
 ### A run waits although the machine looks idle
 
-`heavy --dashboard` shows why: a run beside others needs load below `load_per_core` and enough free VM memory for its expected peak. One `make ci` can keep the load above that threshold on its own.
+`heavy --status` names the reason below the waiting run, and `heavy --dashboard` in its row: a run beside others needs load below `load_per_core` and enough free memory for its expected peak and the reserve. One `make ci` can keep the load above that threshold on its own. On Linux the free memory is at most what the cgroup limits of your user leave, so the number in the reason can be far below what `free` shows for the machine.
 
 A run that shows `~?` in `heavy --status` has no record of an earlier run and starts only when no other run of yours is active. On a new machine that holds for almost every command, so the queue runs one by one although load and memory are low. Set `unpredicted_peak_bytes` in the `load` section of `~/.config/heavy/config.json`, see [Admission](#admission); the daemon reads the file again within two seconds.
 

@@ -14,7 +14,7 @@ import (
 var symbols = map[string]string{"running": "▶", "paused": "⏸", "waiting": "⧗"}
 
 // runRows are one row per open run: the cursor ›, the symbol, the minutes, #n for a waiting run, the label, the
-// directory of the run, its memory and its cores or why it is paused. Without open runs the rows say so, unless the
+// directory of the run, its memory and its cores, why it is paused or what keeps it waiting. Without open runs the rows say so, unless the
 // daemon has not answered.
 func (m Model) runRows() []string {
 	open := m.open()
@@ -78,6 +78,8 @@ func detail(run protocol.RunStatus) string {
 		return cores(run.Budget)
 	case "paused":
 		return "paused: " + run.PausedReason
+	case "waiting":
+		return run.Waits
 	}
 	return ""
 }

@@ -2,7 +2,6 @@ package protocol
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -185,7 +184,13 @@ type RunStatus struct {
 	PredictedBytes int64   `json:"predicted_bytes"`
 	PausedReason   string  `json:"paused_reason"`
 	Restarts       int     `json:"restarts"`
+	// Waits says what keeps a waiting run from starting now, "" for the other runs. The daemon sends it to a heavy
+	// since WaitsSince only: older ones read the status strictly and fail on a field they do not know.
+	Waits string `json:"waits,omitempty"`
 }
+
+// WaitsSince is the version RunStatus.Waits came with.
+const WaitsSince = "1.3.0"
 
 // Forward names the place of the waiting run to move ahead.
 type Forward struct {
@@ -232,7 +237,9 @@ func (m Message) payloads() []string {
 	return names
 }
 
-// ReadMessage reads one message; it must hold exactly the payload of its type. A connection closed between
+// ReadMessage reads one message; it must hold exactly the payload of its type. A field this heavy does not know
+// is left out: a newer heavy of the same protocol may send it, and the hooks and shims of an older version that
+// runs beside it must not fail on it. A connection closed between
 // messages gives io.EOF.
 func ReadMessage(reader *bufio.Reader) (Message, error) {
 	line, err := readLine(reader)
@@ -240,9 +247,7 @@ func ReadMessage(reader *bufio.Reader) (Message, error) {
 		return Message{}, err
 	}
 	var message Message
-	decoder := json.NewDecoder(bytes.NewReader(line))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&message); err != nil {
+	if err := json.Unmarshal(line, &message); err != nil {
 		return Message{}, fmt.Errorf("heavy: expected a message of protocol %d, got %s: %w", Version, line, err)
 	}
 	if payloads := message.payloads(); len(payloads) != 1 || payloads[0] != message.Type {

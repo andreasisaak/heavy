@@ -6,32 +6,77 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 )
 
-// document is a list file that holds valid JSON.
-type document struct {
-	path    string
-	form    string
-	data    []byte
-	compact string
+// notes collects what a list holds that heavy does not use. A list is read as far as it can be: a key heavy does
+// not know is left out, since a newer heavy may have written it, and a value heavy cannot use costs only what it
+// stands for. Neither stops a call: a session of an older heavy keeps working beside a list written for a newer.
+type notes struct {
+	path     string
+	warnings []string
+	// broken is set by a value or a file heavy cannot use; an unknown key alone leaves it false.
+	broken bool
 }
 
-// readJSON reads a list file; invalid JSON is an error that names the file, the form and the text.
-func readJSON(path, form string) (document, error) {
-	data, err := os.ReadFile(path)
+// unknown notes a key heavy does not know.
+func (n *notes) unknown(key string) {
+	n.warnings = append(n.warnings, fmt.Sprintf("heavy: %s: unknown key %q, ignored; a newer heavy may know it", n.path, key))
+}
+
+// unusable notes a value heavy cannot use, what it expected and what it does instead.
+func (n *notes) unusable(key string, raw json.RawMessage, expected, instead string) {
+	shown := "nothing"
+	if raw != nil {
+		var compact bytes.Buffer
+		if json.Compact(&compact, raw) == nil {
+			shown = compact.String()
+		}
+	}
+	n.warnings = append(n.warnings, fmt.Sprintf("heavy: %s: cannot use %q: %s, expected %s; %s", n.path, key, shown, expected, instead))
+	n.broken = true
+}
+
+// unreadable notes a file heavy reads nothing from.
+func (n *notes) unreadable(what string) {
+	n.warnings = append(n.warnings, fmt.Sprintf("heavy: %s: %s; heavy reads nothing from it", n.path, what))
+	n.broken = true
+}
+
+// readObject reads a list file as a JSON object; found is false, with a note, for a file that cannot be read, is
+// no JSON or no object.
+func readObject(n *notes) (fields map[string]json.RawMessage, found bool) {
+	data, err := os.ReadFile(n.path)
 	if err != nil {
-		return document{}, failure("%v", err)
+		var pathError *os.PathError
+		if errors.As(err, &pathError) {
+			n.unreadable(pathError.Op + " " + pathError.Path + ": " + pathError.Err.Error())
+		} else {
+			n.unreadable(err.Error())
+		}
+		return nil, false
 	}
 	var compact bytes.Buffer
 	if err := json.Compact(&compact, data); err != nil {
-		return document{}, failure("%s: expected %s, got invalid JSON (%v): %s", path, form, err, data)
+		n.unreadable(fmt.Sprintf("invalid JSON (%v)", err))
+		return nil, false
 	}
-	return document{path: path, form: form, data: data, compact: compact.String()}, nil
+	fields, isObject := decodeObject(data)
+	if !isObject {
+		n.unreadable("expected a JSON object, got " + compact.String())
+		return nil, false
+	}
+	return fields, true
 }
 
-// shapeError names the file, the expected form and the content read, as compact JSON.
-func (d document) shapeError() error {
-	return failure("%s: expected %s, got %s", d.path, d.form, d.compact)
+// sortedKeys are the keys of an object in the order the notes name them.
+func sortedKeys(fields map[string]json.RawMessage) []string {
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func failure(format string, arguments ...any) error {
@@ -54,15 +99,6 @@ func decodeArray(raw json.RawMessage) ([]json.RawMessage, bool) {
 	}
 	var values []json.RawMessage
 	return values, json.Unmarshal(raw, &values) == nil
-}
-
-func onlyKeys(fields map[string]json.RawMessage, allowed map[string]bool) bool {
-	for key := range fields {
-		if !allowed[key] {
-			return false
-		}
-	}
-	return true
 }
 
 func isNull(raw json.RawMessage) bool {

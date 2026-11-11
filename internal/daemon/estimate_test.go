@@ -33,9 +33,10 @@ func TestRunsWithoutHistoryStartBesideEachOtherOnTheEstimate(t *testing.T) {
 	output, err := exec.Command(scene.binary, "--status").Output()
 	want := regexp.MustCompile(`^running    \S+  sleep 300\.11  \S+  0\.0 GiB \(est\. 3\.0 GiB\)  since \d{2}:\d{2}\n` +
 		`running    \S+  sleep 300\.12  \S+  0\.0 GiB \(est\. 3\.0 GiB\)  since \d{2}:\d{2}\n` +
-		`waiting 1  \S+  sleep 300\.13  \S+  ~3\.0 GiB est\.           since \d{2}:\d{2}\n$`)
+		`waiting 1  \S+  sleep 300\.13  \S+  ~3\.0 GiB est\.           since \d{2}:\d{2}\n` +
+		`  reason: memory: needs 3\.0 GiB \(estimate\) and 0\.0 GiB reserve, 2\.0 GiB are free: 8\.0 GiB less 6\.0 GiB the running runs without history may still take\n$`)
 	if err != nil || !want.Match(output) {
-		t.Fatalf("heavy --status = %q, %v; want two running runs and a waiting one, each with the estimate", output, err)
+		t.Fatalf("heavy --status = %q, %v; want two running runs and a waiting one, each with the estimate, and the memory that keeps the third", output, err)
 	}
 
 	scene.end(t, first)

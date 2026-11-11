@@ -61,7 +61,7 @@ func ReadHello(reader *bufio.Reader) (Hello, error) {
 		return Hello{Protocol: number.Protocol}, nil
 	}
 	var hello Hello
-	if err := strict(line, &hello); err != nil {
+	if err := json.Unmarshal(line, &hello); err != nil {
 		return Hello{}, fmt.Errorf("heavy: expected a hello of protocol %d, got %s: %w", Version, line, err)
 	}
 	return hello, nil
@@ -87,10 +87,4 @@ func readLine(reader *bufio.Reader) ([]byte, error) {
 			return nil, fmt.Errorf("heavy: reading from the other side after %.100q: %w", line, err)
 		}
 	}
-}
-
-func strict(line []byte, target *Hello) error {
-	decoder := json.NewDecoder(bytes.NewReader(line))
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
 }

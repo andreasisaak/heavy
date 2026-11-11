@@ -15,7 +15,7 @@ import (
 	"github.com/andreasisaak/heavy/internal/sessionstart"
 )
 
-// runSessionStartHook is `heavy --hook session-start`: the shims folder lies next to bin/ in the plugin, the PID of
+// runSessionStartHook is `heavy --hook session-start`: the plugin folder is the one above bin/, the PID of
 // Claude Code comes from HEAVY_CLAUDE_PID, which hooks/build.sh sets to its parent, and the herdr plugin runs this
 // binary.
 func runSessionStartHook(stdin io.Reader, stdout, stderr io.Writer) int {
@@ -40,7 +40,7 @@ func runSessionStartHook(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return sessionstart.Run(stdin, stdout, stderr, sessionstart.Dependencies{
-		EnvFile: os.Getenv("CLAUDE_ENV_FILE"), Shims: filepath.Join(filepath.Dir(filepath.Dir(binary)), "shims"),
+		EnvFile: os.Getenv("CLAUDE_ENV_FILE"), Root: filepath.Dir(filepath.Dir(binary)),
 		StateDirectory: state, ClaudePID: claude, Alive: sessions.Alive, Now: time.Now,
 		HerdrPlugin: herdr.Plugin{Data: os.Getenv("CLAUDE_PLUGIN_DATA"), Version: identity.Version, Heavy: binary},
 	})

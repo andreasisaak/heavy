@@ -158,3 +158,16 @@ func TestViewBeforeAnyAnswerOfTheDaemonShowsNoRuns(t *testing.T) {
 		t.Fatalf("view =\n%s\n%+v\nwant\n%s\n%+v", got.Content, got, want.Content, want)
 	}
 }
+
+// A waiting run shows what keeps it where a running one shows its cores, cut to the width of the terminal.
+func TestViewNamesWhatKeepsAWaitingRun(t *testing.T) {
+	runs := exampleRuns()
+	runs[2].Waits = "same worktree as run a1"
+	daemon := &fakeDaemon{answers: []fetchAnswer{{status: protocol.Status{Runs: runs, Machine: exampleMachine()}}}}
+
+	got := strings.Split(screen(t, started(t, daemon)).Content, "\n")
+
+	if want := "  ⧗  3m  #1  ui-test  shopfront-performance    ~3.0 GiB expected  same worktree…"; len(got) < 6 || got[5] != want {
+		t.Fatalf("view =\n%s\nwant the line\n%s", strings.Join(got, "\n"), want)
+	}
+}

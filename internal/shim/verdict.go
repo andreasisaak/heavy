@@ -10,16 +10,14 @@ import (
 
 // verdict tells whether the call is heavy, with the lists and the catalogue of the guard, the words the shell has
 // already expanded and the environment the shim sees (COMPOSE_FILE, COMPOSE_PROJECT_DIRECTORY, exceptions). A
-// broken list is an error. Why a container names no compose project goes to stderr.
+// list is read as far as it can be and never stops the call; the hook, the daemon and heavy --status say what it
+// holds that heavy does not use, the shim stays silent, since its stderr is that of the program it stands for. Why a container names no compose project goes to stderr.
 func verdict(call Call, environment map[string]string) (detect.Match, bool, error) {
 	path, err := lists.PersonalPath()
 	if err != nil {
 		return detect.Match{}, false, err
 	}
-	personal, err := lists.LoadPersonal(path)
-	if err != nil {
-		return detect.Match{}, false, err
-	}
+	personal := lists.LoadPersonal(path)
 	logger := slog.New(slog.NewTextHandler(call.Stderr, &slog.HandlerOptions{ReplaceAttr: withoutTime}))
 	detector := detect.NewDetector(personal, detect.ContainerLookup(environment["PATH"], logger), environment)
 	found, err := detector.Heavy(shell.FromArgv(append([]string{call.Program}, call.Arguments...)), call.Directory)

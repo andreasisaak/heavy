@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/andreasisaak/heavy/internal/helper"
 	"github.com/andreasisaak/heavy/internal/lists"
@@ -47,7 +48,7 @@ func (s *server) sample() {
 	if look {
 		load = s.listForeign(inRuns)
 	}
-	personal, loadError := lists.LoadPersonal(s.personalList)
+	personal := lists.LoadPersonal(s.personalList)
 	limit, limited, limitError := s.readMachine()
 	s.state.Lock()
 	if hostError != nil {
@@ -69,13 +70,7 @@ func (s *server) sample() {
 	for _, current := range usage {
 		current.run.rss, current.run.peak = current.bytes, max(current.run.peak, current.bytes)
 	}
-	switch {
-	case loadError == nil:
-		s.personalLoad, s.loadError = personal.Load, ""
-	case loadError.Error() != s.loadError:
-		s.loadError = loadError.Error()
-		s.logger.Error("reading the thresholds failed, the last ones stay", "error", s.loadError)
-	}
+	s.thresholdsLocked(personal)
 	s.limitLocked(limit, limited, limitError)
 	s.claimSlots()
 	s.decideLocked()
@@ -83,6 +78,26 @@ func (s *server) sample() {
 	s.state.Unlock()
 	if look {
 		s.lookAtForeign(now, available, pressure, load)
+	}
+}
+
+// thresholdsLocked takes the thresholds of the personal list. A list with a value heavy cannot use keeps the last
+// thresholds, so a list caught in the middle of an edit changes nothing; a list that only holds keys this heavy
+// does not know counts. What the list holds beside that is logged once per change. The caller holds state.
+func (s *server) thresholdsLocked(personal lists.Personal) {
+	if !personal.Broken {
+		s.personalLoad = personal.Load
+	}
+	noted := strings.Join(personal.Warnings, "; ")
+	if noted == s.loadError {
+		return
+	}
+	s.loadError = noted
+	switch {
+	case personal.Broken:
+		s.logger.Error("reading the thresholds failed, the last ones stay", "error", noted)
+	case noted != "":
+		s.logger.Warn("the personal list holds keys this heavy does not know", "warning", noted)
 	}
 }
 

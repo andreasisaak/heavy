@@ -45,6 +45,7 @@ type Detector struct {
 	container   ContainerDirectory
 	environment map[string]string
 	projects    map[string]lists.Project
+	warnings    []string
 }
 
 // NewDetector returns a detector over the personal list; environment holds the variables a shim sees, nil for
@@ -129,6 +130,12 @@ func (d *Detector) containerMatch(words []string, runner string, index int, dire
 	return Match{Index: index, Text: runner, Directory: containerProject, ShellDirectory: directory}, true, nil
 }
 
+// Warnings are the notes on what heavy left out of the .heavy.json files the detector has read so far, in the
+// order it read them.
+func (d *Detector) Warnings() []string {
+	return d.warnings
+}
+
 func (d *Detector) project(directory string) (lists.Project, error) {
 	if project, found := d.projects[directory]; found {
 		return project, nil
@@ -138,6 +145,7 @@ func (d *Detector) project(directory string) (lists.Project, error) {
 		return lists.Project{}, err
 	}
 	d.projects[directory] = project
+	d.warnings = append(d.warnings, project.Warnings...)
 	return project, nil
 }
 
