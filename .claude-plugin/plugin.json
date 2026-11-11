@@ -1,0 +1,10 @@
+{
+  "name": "heavy",
+  "version": "1.1.0",
+  "description": "A machine-wide queue for CPU-heavy commands such as make ci, full test runs and builds: the hooks queue them for parallel Claude Code sessions, and heavy runs as many at once as memory and load allow, in the background; one Go binary with a daemon, hooks, shims, a session monitor, a herdr sidebar and a dashboard.",
+  "author": {
+    "name": "Andreas Isaak"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/andreasisaak/heavy"
+}

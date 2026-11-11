@@ -1,0 +1,13 @@
+{
+  "name": "heavy",
+  "description": "heavy: one machine-wide queue for CPU-heavy commands, shipped as a Claude Code plugin.",
+  "owner": {
+    "name": "Andreas Isaak"
+  },
+  "plugins": [
+    {
+      "name": "heavy",
+      "source": "./"
+    }
+  ]
+}

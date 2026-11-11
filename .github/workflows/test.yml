@@ -1,0 +1,68 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    # heavy measures a Mac through sysctl and a Linux machine through /proc, so the checks run on both.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+      - name: Shell syntax
+        run: sh -n hooks/build.sh
+      - name: Manifests
+        run: jq empty .claude-plugin/plugin.json .claude-plugin/marketplace.json hooks/hooks.json monitors/monitors.json
+      - name: Format
+        run: test -z "$(gofmt -l .)" && go mod tidy -diff
+      - name: Vet
+        run: go vet ./... && GOOS=linux go vet ./... && GOOS=darwin go vet ./...
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+      - name: Tests
+        run: go test ./...
+
+  release:
+    # The binaries of exactly these sources, as the release build-<stamp>: hooks/build.sh downloads them at a session
+    # start instead of building, so a machine needs no Go. Only a push to main whose checks passed gets a release.
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: 1.27.1
+      - name: Build
+        run: |
+          mkdir dist
+          for target in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64; do
+            GOOS=${target%/*} GOARCH=${target#*/} CGO_ENABLED=0 go build -trimpath -o "dist/heavy-${target%/*}-${target#*/}" ./cmd/heavy
+          done
+          (cd dist && sha256sum heavy-* > checksums.txt)
+      - name: Release
+        run: |
+          stamp=$(sh hooks/build.sh stamp)
+          version=$(jq -r .version .claude-plugin/plugin.json)
+          if gh release view "build-$stamp" >/dev/null 2>&1; then
+            echo "the release build-$stamp exists already"
+          else
+            gh release create "build-$stamp" dist/* --target "$GITHUB_SHA" --title "heavy $version, build ${stamp%${stamp#????????????}}" \
+              --notes "Binaries of heavy $version for the sources with the stamp $stamp. hooks/build.sh downloads them; see README, Install."
+          fi
+      - name: Keep the ten newest builds
+        run: |
+          gh release list --limit 100 --json tagName,createdAt --jq 'map(select(.tagName | startswith("build-"))) | sort_by(.createdAt) | reverse | .[10:] | .[].tagName' |
+            while read -r tag; do gh release delete "$tag" --yes --cleanup-tag; done

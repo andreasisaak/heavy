@@ -1,0 +1,7 @@
+[
+  {
+    "name": "heavy",
+    "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/build.sh\" monitor",
+    "description": "heavy: pause, resume, restart and memory notices for this session's runs"
+  }
+]

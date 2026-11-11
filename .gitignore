@@ -1,0 +1,6 @@
+specs/
+bin/heavy
+bin/heavy-linux
+bin/.stamp
+bin/.build.lock
+bin/*.new.*
