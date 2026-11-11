@@ -1,10 +1,11 @@
 #!/bin/sh
-# Builds bin/heavy and bin/heavy-linux with the local Go when they are missing or, at a session or monitor start,
-# when the sources changed (design G2), then runs the hook of the mode with bin/heavy. Every hook and the monitor start
-# through this file. bin/heavy-linux is the helper for the Docker VM of a Mac; on Linux docker needs no VM, so only
-# bin/heavy is built there. Before it builds, it looks for the binaries GitHub built for exactly these sources, the
-# release build-<stamp>, and takes them when their checksums match, so a machine needs no Go. The stamp is the SHA-256 over every Go file, go.mod and go.sum, kept in bin/.stamp. A mkdir
-# lock with the PID of its holder serializes sessions that start at once; a lock whose build died is taken over.
+# Puts bin/heavy and, on a Mac, bin/heavy-linux in place when they are missing or, at a session or monitor start,
+# when the sources changed (design G2), then runs the hook of the mode with bin/heavy. Every hook and the monitor
+# start through this file. bin/heavy-linux is the helper for the Docker VM of a Mac; on Linux docker needs no VM, so
+# only bin/heavy is there. It first looks for the binaries GitHub built for exactly these sources, the release
+# build-<stamp>, and takes them when their checksums match, so a machine needs no Go; else it builds with the local
+# Go. The stamp is the SHA-256 over every Go file, go.mod and go.sum, kept in bin/.stamp. A lock file with the PID
+# of its holder serializes sessions that start at once; a lock whose build died is taken over.
 # The binaries are written under a temporary name of this process and moved into place, so no hook runs a
 # half-written one, even when two builds overlap after a takeover. The monitor, which runs the whole session, first
 # waits for a build that holds the lock, so it starts the new binary and not the one being replaced (design G9).
@@ -113,9 +114,14 @@ needed() {
 	[ "$(stamp "$1")" != "$(cat "$1/bin/.stamp" 2>/dev/null)" ]
 }
 
-# stale says whether the build lock has no living holder: its holder died, or it named none for more than three
-# calls since the caller set empty=0. kill -0 does not reach the build of another user on the same machine; its
-# entry in /proc shows that it lives.
+# The build lock is the file <lock>/pid with the PID of its holder. The shell creates it itself, with noclobber,
+# which opens the file exclusively: no two sessions get it. The folder around it is no lock: on the Ubuntu runner
+# of the CI two sessions that started at once both got a zero status from mkdir of the same folder (trace of
+# 2026-11-11), so nothing here depends on mkdir failing.
+
+# stale says whether the build lock has no living holder: its holder died, or its file named none for more than
+# three calls since the caller set empty=0. kill -0 does not reach the build of another user on the same machine;
+# its entry in /proc shows that it lives.
 stale() {
 	holder=$(cat "$1/pid" 2>/dev/null)
 	if [ -n "$holder" ]; then
@@ -128,25 +134,41 @@ stale() {
 	[ "$empty" -gt 3 ]
 }
 
+# claim creates the lock file with the PID of this shell and fails when the file exists.
+claim() {
+	mkdir -p "$1" 2>/dev/null || return 1
+	(
+		set -C
+		echo $$ >"$1/pid"
+	) 2>/dev/null
+}
+
 # lock waits for the build lock and takes it; a lock without a living holder is removed, with a note that names
 # the holder.
 lock() {
 	empty=0
-	until mkdir "$1" 2>/dev/null; do
+	until claim "$1"; do
 		if stale "$1"; then
 			echo "heavy: the build lock names process ${holder:-none}, which does not run; taking the lock over" >&2
-			/bin/rm -rf "$1" && continue
+			/bin/rm -f "$1/pid" && continue
 		fi
 		sleep 1
 	done
-	echo $$ >"$1/pid"
+}
+
+# unlock gives the build lock back: it removes the lock file, and the folder when no other session has taken the
+# lock in it meanwhile.
+unlock() {
+	/bin/rm -f "$1/pid"
+	rmdir "$1" 2>/dev/null
+	return 0
 }
 
 # settle waits while a build holds the lock, so the monitor starts the binary that build writes and not the one
 # it replaces; a lock without a living holder does not hold it up.
 settle() {
 	empty=0
-	while [ -d "$1" ] && ! stale "$1"; do
+	while [ -e "$1/pid" ] && ! stale "$1"; do
 		sleep 1
 	done
 }
@@ -186,7 +208,7 @@ build() {
 			status=1
 		fi
 	fi
-	/bin/rm -rf "$root/bin/.build.lock"
+	unlock "$root/bin/.build.lock"
 	return "$status"
 }
 

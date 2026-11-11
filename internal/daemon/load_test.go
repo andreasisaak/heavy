@@ -149,6 +149,8 @@ wait`)
 	if status := younger.wait(t); status != 1 || !strings.Contains(younger.stderr(), "heavy: stopped by the user during its restart\n") {
 		t.Fatalf("the client ended with %d, stderr %q; want 1 and the reason", status, younger.stderr())
 	}
+	// The client ends as soon as the daemon told it of the stop; the daemon writes the record of the run right after.
+	waitFor(t, func() bool { return strings.Contains(scene.historyLines(t), `"reason":"stopped"`) }, "the history record of the stopped run")
 	attempts, _ := os.ReadFile(filepath.Join(second, "attempts"))
 	history := scene.historyLines(t)
 	if string(attempts) != "attempt\n" || !strings.Contains(history, `"label":"stubborn"`) || !strings.Contains(history, `"reason":"stopped"`) {

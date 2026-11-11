@@ -9,6 +9,10 @@ All notable changes to this project are documented in this file. The format foll
 - `unpredicted_peak_bytes` in the `load` section of the personal list names the peak memory to expect of a command without any record. With it such a run starts beside other runs while the free memory holds the estimate and the reserve; the thresholds for load, swap and the free memory of the host count as before. Each active run without a record keeps the unused part of the estimate free, so several of them do not overbook the machine. Without the key nothing changes: a run without a record starts only alone. On a new machine with much memory the queue ran one by one before, since no command had a record.
 - `heavy --status` and the dashboard mark a run that heavy plans with the estimate: `~8.0 GiB est.` while it waits, `0.5 GiB (est. 8.0 GiB)` while it runs.
 
+### Fixed
+
+- Two sessions that started at the same moment could both build heavy, each replacing the binaries of the other. The build lock was a folder made with `mkdir`, and on a system whose `mkdir` reports success for a folder another process creates at the same moment, as on the Ubuntu runner of the CI, both sessions took it. The lock is now a file the shell itself creates exclusively.
+
 ## [1.1.0] - 2026-11-11
 
 ### Added

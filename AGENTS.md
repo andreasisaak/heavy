@@ -62,10 +62,11 @@ A heavy call flows hook → client → daemon → scheduler → process control:
 | `internal/statusview`, `internal/dashboard` | `heavy --status` and `heavy --dashboard` (bubbletea v2) |
 | `internal/testkit` | test helpers |
 
-`hooks/build.sh` puts `bin/heavy`, and on a Mac `bin/heavy-linux`, in place when the stamp (SHA-256 of the Go sources, `bin/.stamp`) differs, under a `mkdir` lock, then execs the binary: it downloads the release `build-<stamp>` that the job `release` of `.github/workflows/test.yml` builds after the checks of a push to `main`, and builds with the local Go when there is none, as in a checkout with changes. `sh hooks/build.sh stamp` prints the stamp.
+`hooks/build.sh` puts `bin/heavy`, and on a Mac `bin/heavy-linux`, in place when the stamp (SHA-256 of the Go sources, `bin/.stamp`) differs, under a lock file, then execs the binary: it downloads the release `build-<stamp>` that the job `release` of `.github/workflows/test.yml` builds after the checks of a push to `main`, and builds with the local Go when there is none, as in a checkout with changes. `sh hooks/build.sh stamp` prints the stamp.
 
 ## Gotchas
 
+- `mkdir` is no lock: on the Ubuntu runner of the CI two processes that created the same folder at once both got a zero status (2026-11-11). `hooks/build.sh` takes its lock by creating a file with `set -C` (noclobber), which the shell opens exclusively.
 - On Linux each user has a daemon of their own (`~/.cache/heavy`), which reads and signals only what that user may. Rootless docker runs the non-root users of a container under subordinate user ids: the daemon skips such processes (`helper.Options.Unprivileged`) and reaches them through `docker pause` of their container.
 - Linux refuses `O_CREAT` on the file of another user in a sticky folder (`fs.protected_regular`), so `internal/slots` opens a slot file first and creates only a missing one.
 - A daemon learns of the runs of other users only through the slots they hold; without a machine configuration it knows none.

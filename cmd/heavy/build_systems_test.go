@@ -132,3 +132,27 @@ func TestBuildScriptMonitorWaitsForTheBuildOfAnotherUser(t *testing.T) {
 		t.Fatalf("build.sh monitor = %+v, want it to run once the lock is gone", got)
 	}
 }
+
+// On the Ubuntu runner of the CI two sessions that started at once both built: each mkdir of the lock folder
+// reported success (trace of 2026-11-11). The lock must not depend on mkdir failing for a folder that exists, so
+// this mkdir never does.
+func TestBuildScriptBuildsOnceAlthoughMkdirSucceedsOnAnExistingFolder(t *testing.T) {
+	plugin := newPluginRoot(t)
+	mkdir, err := exec.LookPath("mkdir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	testkit.FakeProgram(t, plugin.fakes, "mkdir", `exec `+mkdir+` -p "$@"`)
+	results := make(chan outcome, 2)
+	for range 2 {
+		go func() { results <- plugin.run(t, plugin.path, "session-start") }()
+	}
+	first, second := <-results, <-results
+
+	built := outcome{stdout: "heavy built for host got --hook session-start\n", stderr: plugin.building()}
+	waited := outcome{stdout: "heavy built for host got --hook session-start\n"}
+	one := (first == built && second == waited) || (first == waited && second == built)
+	if !one || plugin.builds(t) != 2 {
+		t.Fatalf("results %+v and %+v, %d builds; want one build of each binary and the other session waiting for it", first, second, plugin.builds(t))
+	}
+}
