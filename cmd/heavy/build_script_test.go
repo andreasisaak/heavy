@@ -22,6 +22,8 @@ type pluginRoot struct {
 	count string
 	path  string
 	fakes string
+	// shellOptions go to /bin/sh in front of build.sh, such as -x for a trace of a run.
+	shellOptions []string
 }
 
 func newPluginRoot(t *testing.T) *pluginRoot {
@@ -108,7 +110,7 @@ func (p *pluginRoot) run(t *testing.T, path, mode string) outcome {
 // runWith is run with more variables in the environment.
 func (p *pluginRoot) runWith(t *testing.T, path, mode string, environment ...string) outcome {
 	t.Helper()
-	command := exec.Command("/bin/sh", filepath.Join(p.root, "hooks", "build.sh"), mode)
+	command := exec.Command("/bin/sh", append(p.shellOptions, filepath.Join(p.root, "hooks", "build.sh"), mode)...)
 	command.Env = append([]string{"PATH=" + path, "HOME=" + t.TempDir()}, environment...)
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
@@ -219,6 +221,10 @@ func TestBuildScriptBuildsAMissingBinaryAndRunsTheHook(t *testing.T) {
 // plan 4.4: two session starts at once build once; both end with exit 0
 func TestBuildScriptBuildsOnceForTwoSessionsAtOnce(t *testing.T) {
 	plugin := newPluginRoot(t)
+	// Each session traces its commands (sh -x) into its stderr, shown when the test fails: on the Ubuntu runner of
+	// the CI both sessions built at once (2026-11-11). The traces of the pipelines mix into the lines of stderr,
+	// so the test counts the note about the build instead of comparing stderr as a whole.
+	plugin.shellOptions = []string{"-x"}
 	var group sync.WaitGroup
 	results := make([]outcome, 2)
 	for index := range results {
@@ -230,12 +236,19 @@ func TestBuildScriptBuildsOnceForTwoSessionsAtOnce(t *testing.T) {
 	}
 	group.Wait()
 
-	built := outcome{stdout: "heavy built for host got --hook session-start\n", stderr: plugin.building()}
-	waited := outcome{stdout: "heavy built for host got --hook session-start\n"}
-	one := (results[0] == built && results[1] == waited) || (results[0] == waited && results[1] == built)
+	notes, hooks := 0, 0
+	for _, result := range results {
+		// The trace repeats the note behind "+ echo"; the note itself starts its line.
+		notes += strings.Count("\n"+result.stderr, "\n"+plugin.building())
+		if result.exitStatus == 0 && result.stdout == "heavy built for host got --hook session-start\n" {
+			hooks++
+		}
+	}
+	one := notes == 1 && hooks == 2
 	if !one || plugin.builds(t) != 2 {
 		timeline, _ := os.ReadFile(filepath.Join(plugin.fakes, "timeline"))
-		t.Fatalf("results %+v, builds %d; want one build of each binary and the second session waiting for it; the builds:\n%s", results, plugin.builds(t), timeline)
+		t.Fatalf("%d notes about a build, %d hooks that ran, %d builds; want one build of each binary and the second session waiting for it; the builds:\n%s\nfirst session:\n%s\nsecond session:\n%s",
+			notes, hooks, plugin.builds(t), timeline, results[0].stderr, results[1].stderr)
 	}
 }
 
