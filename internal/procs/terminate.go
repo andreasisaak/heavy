@@ -13,13 +13,19 @@ func (t Tracker) Terminate(run Run) (<-chan struct{}, error) {
 	if err := t.refuse(run.ProcessGroup); err != nil {
 		return nil, err
 	}
-	failures := []error{ended(t.Host.Signal(run.ProcessGroup, syscall.SIGTERM))}
+	termErr := t.Host.Signal(run.ProcessGroup, syscall.SIGTERM)
+	failures := []error{ended(termErr)}
 	pids, err := t.vmPIDs(run)
 	if err != nil {
 		failures = append(failures, fmt.Errorf("heavy: VM processes of run %s not terminated: %w", run.ID, err))
 	}
-	failures = append(failures, t.sendVM(run, "TERM", "terminated", pids), ended(t.Host.Signal(run.ProcessGroup, syscall.SIGCONT)),
-		t.sendVM(run, "CONT", "continued", pids), t.unpause(run))
+	failures = append(failures, t.sendVM(run, "TERM", "terminated", pids))
+	contErr := t.Host.Signal(run.ProcessGroup, syscall.SIGCONT)
+	if termErr == nil && errors.Is(contErr, syscall.EPERM) && !t.Host.Alive(run.ProcessGroup) {
+		t.Logger.Info("the group of a run ended on SIGTERM before SIGCONT", "id", run.ID, "process_group", run.ProcessGroup)
+		contErr = nil
+	}
+	failures = append(failures, ended(contErr), t.sendVM(run, "CONT", "continued", pids), t.unpause(run))
 	t.Logger.Info("terminated the processes of a run", "id", run.ID, "process_group", run.ProcessGroup)
 	done := make(chan struct{})
 	wait := t.Clock.After(KillAfter)
@@ -33,6 +39,8 @@ func (t Tracker) Terminate(run Run) (<-chan struct{}, error) {
 
 // ended drops the error of a signal to a group whose processes all ended, often right after SIGTERM: ending them
 // is what Terminate is for (probe 2026-11-08: every heavy --stop printed "sending SIGCONT …: no such process").
+// macOS answers EPERM instead while the ended processes are zombies; Terminate drops that only for the SIGCONT
+// after a SIGTERM the group took, so a group it may not signal still fails.
 func ended(err error) error {
 	if errors.Is(err, syscall.ESRCH) {
 		return nil

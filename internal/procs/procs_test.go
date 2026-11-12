@@ -237,6 +237,22 @@ func TestTerminateWithoutVMProcessesSendsNoHelperRequest(t *testing.T) {
 	assertEvents(t, f, []string{"host 4242 TERM", "host 4242 CONT"})
 }
 
+// CI run 43248801419: the command ended on SIGTERM and its client had not reaped it yet, so macOS refused the
+// SIGCONT with EPERM and --stop failed.
+func TestTerminateOfAGroupThatEndsAsZombiesOnTermReportsNoFailure(t *testing.T) {
+	f := newFixture()
+	f.vm.processes = nil
+	f.host.diesOn = syscall.SIGTERM
+	f.host.zombies = true
+
+	_, err := f.tracker.Terminate(standardRun())
+
+	if err != nil {
+		t.Fatalf("Terminate returned error: %v", err)
+	}
+	assertEvents(t, f, []string{"host 4242 TERM", "host 4242 CONT"})
+}
+
 func TestTerminateHostFailureStillTermsVM(t *testing.T) {
 	f := newFixture()
 	hostFailure := errors.New("operation not permitted")

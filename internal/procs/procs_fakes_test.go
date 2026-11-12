@@ -72,6 +72,8 @@ type fakeHost struct {
 	mutex  sync.Mutex
 	alive  bool
 	diesOn syscall.Signal
+	// zombies makes the ended group answer as macOS does before the parent reaps it.
+	zombies bool
 }
 
 func (host *fakeHost) Signal(group int, signal syscall.Signal) error {
@@ -81,9 +83,14 @@ func (host *fakeHost) Signal(group int, signal syscall.Signal) error {
 	}
 	host.mutex.Lock()
 	defer host.mutex.Unlock()
-	// probe 2026-11-08: kill(2) on a group whose processes all ended fails with ESRCH, as SystemHost reports it
+	// probe 2026-11-08: kill(2) on a group whose processes all ended fails with ESRCH, as SystemHost reports it;
+	// macOS answers EPERM while they are zombies their parent has not reaped (CI run 43248801419)
 	if !host.alive {
-		return fmt.Errorf("heavy: sending %s to process group %d: %w", signalName(signal), group, syscall.ESRCH)
+		ended := syscall.ESRCH
+		if host.zombies {
+			ended = syscall.EPERM
+		}
+		return fmt.Errorf("heavy: sending %s to process group %d: %w", signalName(signal), group, ended)
 	}
 	if signal == host.diesOn {
 		host.alive = false

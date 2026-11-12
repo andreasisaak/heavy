@@ -3,6 +3,7 @@
 package procs_test
 
 import (
+	"errors"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -150,4 +151,25 @@ func stateOf(t *testing.T, pid int) string {
 		time.Sleep(20 * time.Millisecond)
 	}
 	return "not T"
+}
+
+// The fact Terminate relies on: macOS refuses a signal to a group of zombies with EPERM, not ESRCH.
+func TestSystemHostSignalToAGroupOfZombiesIsRefused(t *testing.T) {
+	leader, _ := group(t)
+	if err := syscall.Kill(-leader, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := 0; attempt < 100; attempt++ {
+		output, _ := exec.Command("ps", "-o", "stat=", "-g", strconv.Itoa(leader)).Output()
+		if strings.TrimSpace(string(output)) == "Z" {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	err := procs.SystemHost{}.Signal(leader, syscall.SIGCONT)
+
+	if !errors.Is(err, syscall.EPERM) {
+		t.Fatalf("SIGCONT to the zombie group %d = %v, want EPERM", leader, err)
+	}
 }
