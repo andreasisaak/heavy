@@ -57,7 +57,7 @@ flowchart LR
 Turn on auto-update for the marketplace under `/plugin` → Marketplaces, so new versions arrive without a manual update.
 
 > [!IMPORTANT]
-> After an install or an update, start new sessions instead of resuming old ones. A resumed session keeps the `PATH` of the version it started with.
+> After an install, start new sessions. After an update from a heavy older than 1.3.0, end the sessions that are still open: an open session keeps the `PATH` of the version it started with. Start new ones or resume them; the session start of a resumed session takes the shims of earlier versions off its `PATH`.
 
 ### Without Claude Code
 
@@ -285,7 +285,9 @@ The first session after an install or an update downloads heavy from the release
 
 ### Commands still go through the old version after an update
 
-A session that started with heavy 1.3.0 or later keeps up on its own, see [Updates](#updates). A session that started with an older heavy has the folder of that version in its `PATH` and keeps it, also over `claude --resume`: start a new session once.
+A session that started with heavy 1.3.0 or later keeps up on its own, see [Updates](#updates). A session that started with an older heavy has the folder of that version in its `PATH` and keeps it while it is open: end it once, then start a new session or resume it.
+
+`claude --resume` applies the env files of all earlier session starts again, so a resumed session would get the shims folders of the earlier versions back. The session start therefore looks through the env files of its session and turns each line that puts the shims folder of another heavy on `PATH` into a comment that starts with `# heavy, stale:`. It names each folder on stderr and leaves every other line as it is.
 
 ### The herdr sidebar shows no heavy rows
 

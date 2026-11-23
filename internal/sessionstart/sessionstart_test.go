@@ -32,9 +32,16 @@ func hook(t *testing.T, input string, envFile string) (int, string, string, sess
 		Alive: everyProcessLives, EnvFile: envFile, Root: root, StateDirectory: testkit.StateDir(t), ClaudePID: 4242,
 		Now: func() time.Time { return started }, HerdrPlugin: pluginOf(t, t.TempDir(), "1.0.1"),
 	}
+	status, stdout, stderr := hookWith(t, input, deps)
+	return status, stdout, stderr, deps
+}
+
+// hookWith runs the session start of one heavy again, with the dependencies an earlier hook returned.
+func hookWith(t *testing.T, input string, deps sessionstart.Dependencies) (int, string, string) {
+	t.Helper()
 	var stdout, stderr bytes.Buffer
 	status := sessionstart.Run(strings.NewReader(input), &stdout, &stderr, deps)
-	return status, stdout.String(), stderr.String(), deps
+	return status, stdout.String(), stderr.String()
 }
 
 // hooks/test_session_env.py:24: sourced twice, in bash and in zsh, the file puts the shims in front of PATH once

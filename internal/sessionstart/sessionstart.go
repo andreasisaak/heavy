@@ -58,6 +58,7 @@ func Run(stdin io.Reader, stdout, stderr io.Writer, deps Dependencies) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
+	retired := retireEarlierShims(deps, stderr)
 	// A link that cannot be set leaves the shims of the heavy it names; the session is registered all the same.
 	pointed := current.Point(deps.StateDirectory, deps.Root, true)
 	if pointed != nil {
@@ -67,7 +68,7 @@ func Run(stdin io.Reader, stdout, stderr io.Writer, deps Dependencies) int {
 		fmt.Fprintln(stderr, err)
 		return 1
 	}
-	if pointed != nil {
+	if pointed != nil || !retired {
 		return 1
 	}
 	// The own registration stays whatever Alive says: its Claude Code started this hook.
