@@ -7,6 +7,7 @@ All notable changes to this project are documented in this file. The format foll
 ### Fixed
 
 - A shim no longer hangs when the program it becomes hands the call back to it. The shim of a version manager that holds no version of the program, such as the mise shim of `yarn` under a Node without yarn, takes the first program of that name on `PATH` outside its own folder, and that is the heavy shim. Both replaced each other without end, so the call never returned and kept one core busy. The shim now notes in `HEAVY_SHIM_PASSED` which programs it became in this process, passes over those that came back, and takes the next one on `PATH`; when none is left it ends with status 127 and names them.
+- A shim passes over the shims of heavy 0.x. A session started under 0.x keeps that version's shims folder on `PATH` behind `~/.cache/heavy/current/shims`, also over `claude --resume`. Those shims are scripts that run `heavy-shim` next to them, no links to the heavy binary, so the shim of 1.3.0 took them for the real program. Their Python code refused the key `red` of the personal list, so every `uv`, `npm` and other shimmed call of such a session failed with a `ValueError`. The shim now also passes over a program in a folder that holds `heavy-shim`.
 
 ## [1.3.0] - 2026-11-11
 

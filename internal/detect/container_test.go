@@ -166,6 +166,28 @@ func TestRealProgramSkipsShimsAndDirectoriesWithoutIt(t *testing.T) {
 	}
 }
 
+// A session started under heavy 0.x keeps that version's shims folder on PATH behind the current shims. Those shims
+// are scripts that run heavy-shim next to them, no links, and their Python code refuses list keys of later versions.
+func TestRealProgramSkipsTheScriptShimsOfHeavyZero(t *testing.T) {
+	plugin := t.TempDir()
+	for _, folder := range []string{"shims", "real"} {
+		if err := os.Mkdir(filepath.Join(plugin, folder), 0o755); err != nil {
+			t.Fatalf("creating %s: %v", folder, err)
+		}
+	}
+	shims := filepath.Join(plugin, "shims")
+	testkit.FakeProgram(t, shims, "heavy-shim", "echo old heavy; exit 1")
+	testkit.FakeProgram(t, shims, "uv", `exec /bin/bash "${0%/*}/heavy-shim" "${0##*/}" ${1+"$@"}`)
+	real := testkit.FakeProgram(t, filepath.Join(plugin, "real"), "uv", "exit 0")
+	path := shims + string(os.PathListSeparator) + filepath.Join(plugin, "real")
+
+	got, found := detect.RealProgram("uv", path)
+
+	if got != real || !found {
+		t.Fatalf("RealProgram = %q, %v; want %q", got, found, real)
+	}
+}
+
 func TestFailedContainerLookupLeavesTheCallLight(t *testing.T) {
 	directory := resolved(t, t.TempDir())
 	fakes := filepath.Join(directory, "fakes")

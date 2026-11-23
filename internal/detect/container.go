@@ -42,8 +42,11 @@ func ContainerLookup(path string, logger *slog.Logger) ContainerDirectory {
 	}
 }
 
+// zeroShimScript is the script that the shims of heavy 0.x run; it lies in their folder.
+const zeroShimScript = "heavy-shim"
+
 // RealProgram returns the first program of that name on path that is no heavy shim: a shim is a link to the heavy
-// binary, so its target is named heavy.
+// binary, so its target is named heavy, or, in heavy 0.x, a script in a folder that holds heavy-shim.
 func RealProgram(name, path string) (string, bool) {
 	return RealProgramExcept(name, path, nil)
 }
@@ -64,6 +67,9 @@ func RealProgramExcept(name, path string, except []string) (string, bool) {
 			continue
 		}
 		if target, err := filepath.EvalSymlinks(candidate); err == nil && filepath.Base(target) == "heavy" {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(directory, zeroShimScript)); err == nil {
 			continue
 		}
 		return candidate, true
