@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -21,7 +22,8 @@ type Call struct {
 	Binary string
 	// Directory is the working directory of the call.
 	Directory string
-	// Environment is the environment of the call; the program it becomes gets it unchanged.
+	// Environment is the environment of the call; the program it becomes gets it with the note of the pass
+	// (passed.go) and otherwise unchanged.
 	Environment []string
 	// Connect names the daemon that knows the runs; the shim calls it only when HEAVY_RUN is set.
 	Connect func() (daemon.ConnectOptions, error)
@@ -39,9 +41,15 @@ type target struct {
 // that program's. It returns only when that fails, with the exit status to end with.
 func Run(call Call) int {
 	environment := variables(call.Environment)
-	real, found := detect.RealProgram(call.Program, environment["PATH"])
+	returned := handedBack(environment[passedVariable], os.Getpid(), call.Program)
+	real, found := detect.RealProgramExcept(call.Program, environment["PATH"], returned)
 	if !found {
 		shims := filepath.Join(filepath.Dir(filepath.Dir(call.Binary)), "shims")
+		if len(returned) > 0 {
+			fmt.Fprintf(call.Stderr, "heavy: every %s on PATH outside the heavy shims (%s) handed the call back to them: %s\n",
+				call.Program, shims, strings.Join(returned, ", "))
+			return 127
+		}
 		fmt.Fprintf(call.Stderr, "heavy: found no %s on PATH outside the heavy shims (%s)\n", call.Program, shims)
 		return 127
 	}
@@ -51,7 +59,11 @@ func Run(call Call) int {
 		return 1
 	}
 	fmt.Fprint(call.Stderr, next.note)
-	err = syscall.Exec(next.path, next.argv, call.Environment)
+	environmentOfNext := call.Environment
+	if next.path == real {
+		environmentOfNext = withPassed(call.Environment, os.Getpid(), call.Program, append(returned, real))
+	}
+	err = syscall.Exec(next.path, next.argv, environmentOfNext)
 	fmt.Fprintf(call.Stderr, "heavy: starting %s failed: %v\n", next.path, err)
 	if errors.Is(err, syscall.ENOENT) {
 		return 127

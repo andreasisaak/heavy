@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -44,11 +45,20 @@ func ContainerLookup(path string, logger *slog.Logger) ContainerDirectory {
 // RealProgram returns the first program of that name on path that is no heavy shim: a shim is a link to the heavy
 // binary, so its target is named heavy.
 func RealProgram(name, path string) (string, bool) {
+	return RealProgramExcept(name, path, nil)
+}
+
+// RealProgramExcept is RealProgram that also passes over the programs in except, which are named as RealProgram
+// returned them.
+func RealProgramExcept(name, path string, except []string) (string, bool) {
 	for _, directory := range filepath.SplitList(path) {
 		if directory == "" {
 			continue
 		}
 		candidate := filepath.Join(directory, name)
+		if slices.Contains(except, candidate) {
+			continue
+		}
 		information, err := os.Stat(candidate)
 		if err != nil || information.IsDir() || information.Mode()&0o111 == 0 {
 			continue

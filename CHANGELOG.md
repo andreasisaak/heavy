@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A shim no longer hangs when the program it becomes hands the call back to it. The shim of a version manager that holds no version of the program, such as the mise shim of `yarn` under a Node without yarn, takes the first program of that name on `PATH` outside its own folder, and that is the heavy shim. Both replaced each other without end, so the call never returned and kept one core busy. The shim now notes in `HEAVY_SHIM_PASSED` which programs it became in this process, passes over those that came back, and takes the next one on `PATH`; when none is left it ends with status 127 and names them.
+
 ## [1.3.0] - 2026-11-11
 
 An update of heavy, and a new key in a list, no longer disturb running sessions. The rollout of 1.2.0 did both: the hooks and shims of 1.1.0 refused every call once the personal list held the new key, and the sessions kept the shims of the old version.

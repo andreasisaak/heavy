@@ -191,3 +191,20 @@ func TestFailedContainerLookupLeavesTheCallLight(t *testing.T) {
 		t.Fatalf("logged %q, want %q", records.String(), want)
 	}
 }
+
+func TestRealProgramExceptPassesOverTheNamedPrograms(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	for _, directory := range []string{first, second} {
+		if err := os.WriteFile(filepath.Join(directory, "yarn"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := first + string(os.PathListSeparator) + second
+
+	got, found := detect.RealProgramExcept("yarn", path, []string{filepath.Join(first, "yarn")})
+	missing, missingFound := detect.RealProgramExcept("yarn", path, []string{filepath.Join(first, "yarn"), filepath.Join(second, "yarn")})
+
+	if want := filepath.Join(second, "yarn"); got != want || !found || missing != "" || missingFound {
+		t.Fatalf("RealProgramExcept = %q, %v and %q, %v; want %q and nothing", got, found, missing, missingFound, want)
+	}
+}
